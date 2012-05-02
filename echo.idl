@@ -1,0 +1,11 @@
+package test {
+    struct Person {
+        String name;
+        i32 birth_year;
+    }
+    interface Echo {
+        String echo (String msg);
+        String concat (List<String> msgs);
+        String hi (Person arg);
+    }
+}
