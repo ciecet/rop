@@ -2,25 +2,28 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <errno.h>
-//#include <sys/ui.h>
 #include "Remote.h"
 #include "UnixTransport.h"
+#include "Log.h"
 
 using namespace rop;
 
 void UnixTransport::loop ()
 {
+    Log l("loop ");
     fd_set infdset;
     fd_set expfdset;
     int nfds = inFd+1;
 
     loopThread = pthread_self();
+    isLooping = true;
 
     while (true) {
         FD_ZERO(&infdset);
         FD_ZERO(&expfdset);
         FD_SET(inFd, &infdset);
         FD_SET(inFd, &expfdset);
+        l.info("blocked for reading.\n");
         if (pselect(nfds, &infdset, 0, &expfdset, 0, 0) <= 0) {
             return;
         }
@@ -29,12 +32,16 @@ void UnixTransport::loop ()
         }
 
         if (FD_ISSET(inFd, &infdset)) {
+            l.info("got message.\n");
             tryReceive();
         }
 
         // execute processors
         for (map<int,Port*>::iterator i = ports.begin();
                 i != ports.end(); i++) {
+            if (!i->second->requests.empty()) {
+                l.info("executing request...\n");
+            }
             while (i->second->handleRequest());
         }
     }
@@ -42,6 +49,7 @@ void UnixTransport::loop ()
 
 void UnixTransport::tryReceive ()
 {
+    Log l("read ");
     pthread_mutex_lock(&monitor);
 
     while (true) {
@@ -78,15 +86,19 @@ void UnixTransport::tryReceive ()
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
             inPort = getPort(-p); // reverse local<->remote port id
+            l.debug("getting port:%d\n", -p);
         }
 
         switch (inPort->read(&inBuffer)) {
         case Frame::COMPLETE:
             inPort = 0;
             break;
+        case Frame::STOPPED:
+            break;
+        default:
         case Frame::ABORTED:
             // TODO: handle it
-            ;
+            l.error("Unexpected IO exception.\n");
         }
     }
     pthread_mutex_unlock(&monitor);
@@ -97,15 +109,15 @@ void UnixTransport::waitWritable ()
     fd_set infdset;
     fd_set outfdset;
     fd_set expfdset;
-    bool handleRead = false;
+    bool isLoopThread = false;
     int nfds;
 
     pthread_t self = pthread_self();
     if (pthread_equal(self, loopThread)) {
-        handleRead = true;
+        isLoopThread = true;
     }
 
-    if (handleRead) {
+    if (isLoopThread) {
         nfds = ((outFd > inFd) ? outFd : inFd ) + 1;
     } else {
         nfds = outFd + 1;
@@ -116,7 +128,7 @@ void UnixTransport::waitWritable ()
     FD_ZERO(&expfdset);
     FD_SET(outFd, &outfdset);
     FD_SET(outFd, &expfdset);
-    if (handleRead) {
+    if (isLoopThread) {
         FD_SET(inFd, &infdset);
         FD_SET(inFd, &expfdset);
     }
@@ -136,13 +148,16 @@ void UnixTransport::waitWritable ()
 
 void UnixTransport::flushPort (Port *p)
 {
+    Log l("flush ");
     pthread_mutex_lock(&monitor);
     while (isSending) {
+        l.trace("waiting for lock...\n");
         pthread_cond_wait(&writableCondition, &monitor);
     }
     isSending = true;
     pthread_mutex_unlock(&monitor);
 
+    l.debug("sending port:%d...\n", p->id);
     outBuffer.write(p->id >> 24);
     outBuffer.write(p->id >> 16);
     outBuffer.write(p->id >> 8);
@@ -152,11 +167,7 @@ void UnixTransport::flushPort (Port *p)
 
         // fill in buffer
         if (p->writer.frame) {
-            Frame::STATE r;
-            do {
-                r = p->write(&outBuffer);
-            } while (!(r == Frame::STOPPED || r == Frame::ABORTED));
-            if (r == Frame::ABORTED) {
+            if (p->write(&outBuffer) == Frame::ABORTED) {
                 // TODO: handle abortion.
             }
         } else {
@@ -173,11 +184,14 @@ void UnixTransport::flushPort (Port *p)
             io[0].iov_len = Buffer::BUFFER_SIZE - outBuffer.offset;
             io[1].iov_base = outBuffer.buffer;
             io[1].iov_len = outBuffer.end() - outBuffer.buffer;
+            l.debug("sending message (wrapped)...\n");
             w = writev(outFd, io, 2);
         } else {
+            l.debug("sending message...\n");
             w = write(outFd, outBuffer.begin(), outBuffer.size);
         }
         if (w >= 0) {
+            l.debug("sent %d bytes.\n", w);
             outBuffer.drop(w);
             continue;
         }
@@ -186,6 +200,7 @@ void UnixTransport::flushPort (Port *p)
             break;
         }
 
+        l.debug("buffer full...\n");
         waitWritable();
     }
 
@@ -193,4 +208,30 @@ void UnixTransport::flushPort (Port *p)
     isSending = false;
     pthread_cond_signal(&writableCondition);
     pthread_mutex_unlock(&monitor);
+}
+
+void UnixTransport::waitReadable ()
+{
+    fd_set infdset;
+    fd_set expfdset;
+
+    FD_ZERO(&infdset);
+    FD_ZERO(&expfdset);
+    FD_SET(inFd, &infdset);
+    FD_SET(inFd, &expfdset);
+
+    if (pselect(inFd+1, &infdset, 0, &expfdset, 0, 0) <= 0) {
+        return;
+    }
+}
+
+void UnixTransport::waitPort (Port *p)
+{
+    if (isLooping) {
+        pthread_cond_wait(&p->wakeCondition, &monitor);
+        return;
+    }
+
+    waitReadable();
+    tryReceive();
 }

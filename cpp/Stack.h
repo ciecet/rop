@@ -17,7 +17,7 @@ struct Stack;
  */
 struct Frame {
 
-    enum STATE { STOPPED, CONTINUE, COMPLETE, ABORTED };
+    enum STATE { COMPLETE, CONTINUE, STOPPED, ABORTED };
 
     Frame *up;
     int step;

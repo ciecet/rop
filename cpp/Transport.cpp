@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include "Remote.h"
+#include "Log.h"
 
 using namespace rop;
 
@@ -58,9 +59,11 @@ Port *Transport::getPort (int pid)
 
 // private
 static Frame::STATE run (Stack *stack) {
-
+    Log l("stackrunner ");
     while (stack->frame) {
-        switch (stack->frame->run(stack)) {
+        Frame::STATE s = stack->frame->run(stack);
+        l.debug("running %08x returned %d\n", stack->frame, s);
+        switch (s) {
         case Frame::STOPPED:
             return Frame::STOPPED;
         case Frame::CONTINUE:
@@ -92,8 +95,9 @@ struct MessageReader: Frame {
     Request *request;
     Return *ret;
     Port* port;
+    Log log;
 
-    MessageReader (Port *p): port(p), request(0) {}
+    MessageReader (Port *p): port(p), request(0), log("msgrdr ") {}
     ~MessageReader () {
         if (request) {
             delete request;
@@ -101,12 +105,14 @@ struct MessageReader: Frame {
     }
 
     STATE run (Stack *stack) {
+        log.debug("run step:%d\n", step);
         Buffer *buf;
 
         BEGIN_STEP();
         TRY_READ(int8_t, messageHead, stack);
 
         if ((messageHead & (0x3 << 6)) == (0x3 << 6)) {
+            log.debug("Getting return value...\n");
             // getting return message
             ret = port->returns.front();
             if (!ret) {
@@ -121,35 +127,45 @@ struct MessageReader: Frame {
                 pthread_cond_signal(&port->wakeCondition);
             }
         } else {
+            log.debug("Getting request...\n");
             // getting request message
             NEXT_STEP();
             TRY_READ(int32_t, objectId, stack);
-            if (objectId >= 0) {
-                // id value must be negative in the view of the remote peer.
+            objectId = -objectId; // reverse local <-> remote
+            if (objectId < 0) {
+                log.error("Aborting... expected non-negative object id:%d\n",
+                        objectId);
                 return ABORTED;
             }
 
             NEXT_STEP();
             TRY_READ(int16_t, methodIndex, stack);
+            log.debug("Requesting on oid:%d mid:%d\n", objectId, methodIndex);
 
             {
                 SkeletonBase *skel = port->transport->registry->getSkeleton(
-                        -objectId);
+                        objectId);
                 if (!skel) {
                     // fail
+                    log.error("Aborting... skeleton not found\n");
                     return ABORTED;
                 }
                 request = skel->createRequest(methodIndex);
                 request->messageHead = messageHead;
+                log.debug("created a request instance. %08x\n", request);
             }
             stack->push(request->argumentsReader);
+            log.debug("reading arguments...\n");
             CALL();
+            log.debug("reading arguments...done \n");
             port->requests.push_back(request);
             request = 0;
 
             if (port->isWaiting) {
+                log.debug("wake up waiting thread to execute the request.\n");
                 pthread_cond_signal(&port->wakeCondition);
             } else {
+                log.debug("notifyUnhandledRequest...\n");
                 port->transport->notifyUnhandledRequest(port);
             }
         }
@@ -188,15 +204,17 @@ void Port::addReturn (Return *ret) {
 
 void Port::flushAndWait ()
 {
+    Log l("f&w ");
     pthread_mutex_t *m = &transport->monitor;
     
     isWaiting = true;
     transport->flushPort(this);
     
+    l.debug("waiting for reply\n");
     pthread_mutex_lock(m);
     while (!returns.empty()) {
         if (requests.empty()) {
-            pthread_cond_wait(&wakeCondition, m);
+            transport->waitPort(this);
         }
 
         pthread_mutex_unlock(m);
@@ -214,9 +232,12 @@ bool Port::handleRequest () {
         return false;
     }
 
+    Log l("exec ");
+
     Request *req = requests.front();
     int ortid = rpcThreadId;
     rpcThreadId = id; // attach to rpc thread while executing the request.
+    l.debug("calling!!! %08x\n", req);
     req->call();
     rpcThreadId = ortid;
     if (lastRequest) {
@@ -227,4 +248,5 @@ bool Port::handleRequest () {
 
     writer.push(req->returnWriter);
     flush();
+    return true;
 }

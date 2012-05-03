@@ -9,6 +9,7 @@
 #include "Ref.h"
 #include "Stack.h"
 #include "TypeIO.h"
+#include "Log.h"
 
 template <typename T>
 struct Skeleton {};
@@ -139,6 +140,9 @@ struct Transport {
     /** Flush out-going messages synchronously. Called by port. */
     virtual void flushPort (Port *p) = 0;
 
+    /** Wait until port is updated. */
+    virtual void waitPort (Port *p) = 0;
+
     /**
      * Notifies that new request was added in the given port but no thread
      * was scheduled to run it.
@@ -158,7 +162,7 @@ struct Port {
      * local thread. negative value means that the port was initiated by 
      * the remote thread.
      */
-    int id;
+    int32_t id;
     /** waiting returns for remote call. not owned. */
     deque<Return*> returns;
     /** Pending call request. owned. */
@@ -302,9 +306,15 @@ struct ReturnReader: Return {
 template <const int S>
 struct ReturnWriter: Return {
     Frame *frames[S];
+    int8_t messageHeader;
+
+    ReturnWriter (): messageHeader(0x3<<6) {}
 
     STATE run (Stack *stack) {
         BEGIN_STEP();
+        TRY_WRITE(int8_t, messageHeader, stack);
+
+        NEXT_STEP();
         TRY_WRITE(int32_t, index, stack);
 
         NEXT_STEP();
@@ -381,6 +391,26 @@ struct InterfaceWriter: Frame {
         TRY_WRITE(int32_t, id, stack);
 
         END_STEP();
+    }
+};
+
+template <const int S>
+struct RequestWriter: SequenceWriter<S+3> {
+    int8_t messageHead;
+    int32_t objectId;
+    int16_t methodIndex;
+    Writer<int8_t> frame0;
+    Writer<int32_t> frame1;
+    Writer<int16_t> frame2;
+    Frame **args;
+
+    RequestWriter (int8_t h, int32_t o, int16_t m):
+            messageHead(h), objectId(o), methodIndex(m),
+            frame0(messageHead), frame1(objectId), frame2(methodIndex) {
+        this->frames[0] = &frame0;
+        this->frames[1] = &frame1;
+        this->frames[2] = &frame2;
+        args = this->frames+3;
     }
 };
 

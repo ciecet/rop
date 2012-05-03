@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include "Ref.h"
 #include "Stack.h"
+#include "Log.h"
 
 namespace rop {
 
@@ -196,13 +197,13 @@ template<> struct Reader<string>: Frame {
         BEGIN_STEP();
         TRY_READ(int32_t, length, stack);
         obj.clear();
-        obj.reserve(length + 1);
+        obj.reserve(length);
 
         // read each char
         NEXT_STEP();
         buf = reinterpret_cast<Buffer*>(stack->env);
         while (length) {
-            if (buf->size) {
+            if (!buf->size) {
                 return STOPPED;
             }
             obj.push_back(static_cast<char>(buf->read()));
@@ -257,13 +258,13 @@ template<typename T> struct Reader<vector<T> >: Frame {
         BEGIN_STEP();
         TRY_READ(int32_t, length, stack);
         obj.clear();
-        obj.reserve(length);
+        obj.resize(length);
         i = 0;
 
         // read items
         NEXT_STEP();
         if (i < length) {
-            new(stack->allocate(sizeof(Reader<T>))) Reader<T>(obj[i++]);
+            stack->push(new(stack->allocate(sizeof(Reader<T>))) Reader<T>(obj[i++]));
             return CONTINUE;
         }
 
@@ -289,7 +290,7 @@ template<typename T> struct Writer<vector<T> >: Frame {
         // write items
         NEXT_STEP();
         if (i < obj.size()) {
-            new(stack->allocate(sizeof(Writer<T>))) Writer<T>(obj[i++]);
+            stack->push(new(stack->allocate(sizeof(Writer<T>))) Writer<T>(obj[i++]));
             return CONTINUE;
         }
 
@@ -351,12 +352,12 @@ template<typename T, typename U> struct Writer<map<T,U> >: Frame {
         NEXT_STEP();
         if (iter != obj->end()) {
             if (first) {
-                new(stack->allocate(sizeof(Writer<T>))) Writer<T>(
-                        const_cast<T*>(&iter->first));
+                stack->push(new(stack->allocate(sizeof(Writer<T>))) Writer<T>(
+                        const_cast<T*>(&iter->first)));
                 first = false;
                 return CONTINUE;
             } else {
-                new(stack->allocate(sizeof(Writer<U>))) Writer<U>(iter->second);
+                stack->push(new(stack->allocate(sizeof(Writer<U>))) Writer<U>(iter->second));
                 iter++;
                 first = true;
                 return CONTINUE;
@@ -411,6 +412,7 @@ struct SequenceWriter: Frame {
     SequenceWriter () {}
 
     STATE run (Stack *stack) {
+        
         if (step >= S) {
             return COMPLETE;
         }
@@ -423,10 +425,18 @@ template <const int S>
 struct SequenceReader: Frame {
     void *values[S];
     Frame *frames[S];
+    Log log;
+
+    SequenceReader (): log("seqread ") {}
+
     STATE run (Stack *stack) {
+        Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (step >= S) {
+            log.debug("exit. bufsize:%d\n", buf->size);
             return COMPLETE;
         }
+        log.debug("pushed %08x step:%d/%d bufsize:%d\n",
+                frames[step], step, S, buf->size);
         stack->push(frames[step++]);
         return CONTINUE;
     }

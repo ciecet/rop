@@ -1,5 +1,6 @@
 #include <string>
 #include "Remote.h"
+#include "Log.h"
 
 using namespace base;
 using namespace rop;
@@ -13,13 +14,15 @@ template<>
 struct Stub<Echo>: Echo {
 
     string echo (string msg) {
+        Log l("stub ");
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
+        l.debug("sending %d.%d...\n", remote->id, 0);
+        RequestWriter<1> req(0, remote->id, 0);
         Writer<string> arg0(msg);
-        SequenceWriter<1> sw;
-        sw.frames[0] = &arg0;
-        p->writer.push(&sw);
+        req.args[0] = &arg0;
+        p->writer.push(&req);
 
         struct _:ReturnReader<1> {
             string value0;
@@ -38,10 +41,10 @@ struct Stub<Echo>: Echo {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
+        RequestWriter<1> req(0, remote->id, 1);
         Writer<vector<string> > arg0(msgs);
-        SequenceWriter<1> sw;
-        sw.frames[0] = &arg0;
-        p->writer.push(&sw);
+        req.args[0] = &arg0;
+        p->writer.push(&req);
 
         struct _:ReturnReader<1> {
             string value0;

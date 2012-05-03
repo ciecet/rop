@@ -13,8 +13,16 @@ class Ref {
     T *object;
 public:
     Ref (): object(0) {}
-    Ref (T *o): object(o) { object->ref(); }
-    Ref (const Ref<T> &r): object(r.object) { object->ref(); }
+    Ref (T *o): object(o) {
+        if (o) {
+            o->ref();
+        }
+    }
+    Ref (const Ref<T> &r): object(r.object) {
+        if (object) {
+            object->ref();
+        }
+    }
     ~Ref () {
         if (object) {
             object->deref();
@@ -62,9 +70,11 @@ public:
 
     void ref() {
         __sync_add_and_fetch(&refCount, 1);
+        //refCount++;
     }
 
     void deref() {
+        //if (--refCount == 0) {
         if (__sync_sub_and_fetch(&refCount, 1) == 0) {
             delete static_cast<T*>(this);
         }
