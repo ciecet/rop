@@ -3,50 +3,39 @@
 
 #include "Remote.h"
 
-struct UnixPort: Port {
-    pthread_cond_t responseCondition;
-    UnixPort () {
-        pthread_cond_init(&responseCondition, 0);
-    }
-    ~UnixPort () {
-        pthread_cond_destroy(&responseCondition);
-    }
-};
+namespace rop {
 
 struct UnixTransport: Transport {
     int inFd;
     int outFd;
     Buffer inBuffer;
-    PortRef inPort;
+    Port *inPort;
     Buffer outBuffer;
-    PortRef outPort;
-    pthread_mutex_t lock;
     pthread_cond_t writableCondition;
-    bool isReading;
+    bool isSending;
+    pthread_t loopThread;
+
     
-    UnixTransport (Registry &pt, int i, int o):
-            Transport(pt), inFd(i),outFd(o),isReading(false) {
-        pthread_mutex_init(&lock, 0);
-        pthread_cond_init(&writableCondition);
+    UnixTransport (Registry &r, int i, int o): Transport(r),
+            inFd(i),outFd(o),isSending(false), inPort(0) {
+        pthread_cond_init(&writableCondition, 0);
     }
     ~UnixTransport () {
         pthread_cond_destroy(&writableCondition);
-        pthread_mutex_destroy(&lock);
     }
 
-    PortRef getPort ();
-    PortRef createPort () {
-        return UnixPort();
-    }
-    void sendAndWait (PortRef p);
-    void notify (PortRef p);
-    void send (PortRef p);
     void loop (); // handle reading
     
     void tryReceive ();
-    void trySend ();
-    void tryHandleProcesses ();
     void waitWritable ();
+
+////////////////////////////////////////////////////////////////////////////////
+//  implements transport
+
+    void flushPort (Port *p);
+    void notifyUnhandledRequest (Port *p) {} // already checked by loop()
 };
+
+}
 
 #endif

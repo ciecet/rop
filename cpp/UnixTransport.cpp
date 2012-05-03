@@ -1,28 +1,18 @@
 #include <sys/select.h>
+#include <sys/uio.h>
 #include <unistd.h>
-#include <sys/ui.h>
-#include "Port.h"
+#include <errno.h>
+//#include <sys/ui.h>
+#include "Remote.h"
 #include "UnixTransport.h"
 
-static __thread int rpcThreadId;
-
-static int nextId = 1;
-
-PortRef UnixTransport::getPort ()
-{
-    if (!rpcThreadId) {
-        rpcThreadId = nextId++;
-    }
-    return getPort(rpcThreadId);
-}
-
-static pthraed_t loopThread;
+using namespace rop;
 
 void UnixTransport::loop ()
 {
     fd_set infdset;
     fd_set expfdset;
-    int nfds = infdset+1;
+    int nfds = inFd+1;
 
     loopThread = pthread_self();
 
@@ -31,10 +21,9 @@ void UnixTransport::loop ()
         FD_ZERO(&expfdset);
         FD_SET(inFd, &infdset);
         FD_SET(inFd, &expfdset);
-        if (pselect(nfds, infdset, outfdset, expfdset, 0, 0) <= 0) {
+        if (pselect(nfds, &infdset, 0, &expfdset, 0, 0) <= 0) {
             return;
         }
-
         if (FD_ISSET(inFd, &expfdset)) {
             return;
         }
@@ -43,12 +32,18 @@ void UnixTransport::loop ()
             tryReceive();
         }
 
-        tryHandleProcesses();
+        // execute processors
+        for (map<int,Port*>::iterator i = ports.begin();
+                i != ports.end(); i++) {
+            while (i->second->handleRequest());
+        }
     }
 }
 
-static void UnixTransport::tryReceive ()
+void UnixTransport::tryReceive ()
 {
+    pthread_mutex_lock(&monitor);
+
     while (true) {
 
         // fill in buffer
@@ -65,10 +60,10 @@ static void UnixTransport::tryReceive ()
         }
         if (r == 0) {
             // eof
-            return;
+            break;
         } if (r < 0) {
             // fail (or eblock)
-            return;
+            break;
         }
         inBuffer.size += r;
 
@@ -76,71 +71,25 @@ static void UnixTransport::tryReceive ()
         if (inPort == 0) {
             // need port id and payload length
             if (inBuffer.size < 4) {
-                return;
+                break;
             }
             int p = inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
-            inPort = getPort(p);
+            inPort = getPort(-p); // reverse local<->remote port id
         }
 
-        if (inPort.read(&inBuffer) == COMPLETE) {
+        switch (inPort->read(&inBuffer)) {
+        case Frame::COMPLETE:
             inPort = 0;
-        }
-    }
-}
-
-void UnixTransport::send (PortRef p)
-{
-    pthread_mutex_lock(&lock);
-    while (outPort) {
-        pthread_condvar_wait(&writableCondition, &lock);
-    }
-    outPort = p;
-    pthread_mutex_unlock(&lock);
-
-    while (true) {
-
-        // fill in buffer
-        if (p->outStack.frame) {
-            RESULT r;
-            do {
-                r = outPort.write(&outBuffer);
-            } while (r != STOPPED);
-        } else {
-            if (outBuffer.size == 0) {
-                break;
-            }
-        }
-
-        int w;
-        if (outBuffer.hasWrappedData()) {
-            iovec io[2];
-            io[0].iov_base = outBuffer.begin();
-            io[0].iov_len = BUFFER_SIZE - outBuffer.offset;
-            io[1].iov_base = outBuffer.buffer;
-            io[1].iov_len = outBuffer.end() - outBuffer.buffer;
-            w = writev(outFd, io, 2);
-        } else {
-            w = write(outFd, outBuffer.begin(), outBuffer.size);
-        }
-        if (w >= 0) {
-            outBuffer.drop(w);
-            continue;
-        }
-
-        if (errno != EWOULDBLOCK) {
             break;
+        case Frame::ABORTED:
+            // TODO: handle it
+            ;
         }
-
-        waitWritable();
     }
-
-    pthread_mutex_lock(&lock);
-    outPort = 0;
-    pthread_cond_signal(&writableCondition);
-    pthread_mutex_unlock(&lock);
+    pthread_mutex_unlock(&monitor);
 }
 
 void UnixTransport::waitWritable ()
@@ -167,13 +116,12 @@ void UnixTransport::waitWritable ()
     FD_ZERO(&expfdset);
     FD_SET(outFd, &outfdset);
     FD_SET(outFd, &expfdset);
-
     if (handleRead) {
         FD_SET(inFd, &infdset);
         FD_SET(inFd, &expfdset);
     }
 
-    if (pselect(nfds, infdset, outfdset, expfdset, 0, 0) <= 0) {
+    if (pselect(nfds, &infdset, &outfdset, &expfdset, 0, 0) <= 0) {
         return;
     }
 
@@ -186,20 +134,63 @@ void UnixTransport::waitWritable ()
     }
 }
 
-void UnixTransport::sendAndWait (PortRef p)
+void UnixTransport::flushPort (Port *p)
 {
-    send(p);
-
-    pthread_mutex_lock(&lock);
-    while (!p->returns.empty()) {
-        pthread_cond_wait(&p->responseCondition);
+    pthread_mutex_lock(&monitor);
+    while (isSending) {
+        pthread_cond_wait(&writableCondition, &monitor);
     }
-    pthread_mutex_unlock(&lock);
-}
+    isSending = true;
+    pthread_mutex_unlock(&monitor);
 
-void UnixTransport::notify (PortRef p)
-{
-    pthread_mutex_lock(&lock);
-    pthread_cond_signal(&p->responseCondition);
-    pthread_mutex_unlock(&lock);
+    outBuffer.write(p->id >> 24);
+    outBuffer.write(p->id >> 16);
+    outBuffer.write(p->id >> 8);
+    outBuffer.write(p->id);
+
+    while (true) {
+
+        // fill in buffer
+        if (p->writer.frame) {
+            Frame::STATE r;
+            do {
+                r = p->write(&outBuffer);
+            } while (!(r == Frame::STOPPED || r == Frame::ABORTED));
+            if (r == Frame::ABORTED) {
+                // TODO: handle abortion.
+            }
+        } else {
+            if (outBuffer.size == 0) {
+                // all flushed.
+                break;
+            }
+        }
+
+        int w;
+        if (outBuffer.hasWrappedData()) {
+            iovec io[2];
+            io[0].iov_base = outBuffer.begin();
+            io[0].iov_len = Buffer::BUFFER_SIZE - outBuffer.offset;
+            io[1].iov_base = outBuffer.buffer;
+            io[1].iov_len = outBuffer.end() - outBuffer.buffer;
+            w = writev(outFd, io, 2);
+        } else {
+            w = write(outFd, outBuffer.begin(), outBuffer.size);
+        }
+        if (w >= 0) {
+            outBuffer.drop(w);
+            continue;
+        }
+
+        if (errno != EWOULDBLOCK) {
+            break;
+        }
+
+        waitWritable();
+    }
+
+    pthread_mutex_lock(&monitor);
+    isSending = false;
+    pthread_cond_signal(&writableCondition);
+    pthread_mutex_unlock(&monitor);
 }

@@ -3,9 +3,33 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <iostream>
+#include <string>
+#include <vector>
 #include "Remote.h"
-#include "Unix.h"
-#include "Types.h"
+#include "UnixTransport.h"
+#include "Echo.h"
+
+using namespace std;
+using namespace rop;
+
+struct EchoImpl: Exportable<Echo> {
+    string echo (string msg);
+    string concat (vector<string> msgs);
+};
+
+string EchoImpl::echo (string msg)
+{
+    return msg;
+}
+
+string EchoImpl::concat (vector<string> msgs)
+{
+    string ret;
+    for (vector<string>::iterator i = msgs.begin(); i != msgs.end(); i++) {
+        ret += *i;
+    }
+    return ret;
+}
 
 void test1 ()
 {
@@ -18,7 +42,6 @@ void test1 ()
     if (fork()) {
         // client
         UnixTransport trans(reg, p0[0], p1[1]);
-        sleep(1);
 
         Stub<Echo> e;
         e.remote = reg.getRemote("Echo");
@@ -28,7 +51,7 @@ void test1 ()
         args.push_back("a");
         args.push_back("b");
         args.push_back("c");
-        printf("%s\n", e.concat(args).cstr());
+        printf("%s\n", e.concat(args).c_str());
     } else {
         // server
         UnixTransport trans(reg, p1[0], p0[1]);

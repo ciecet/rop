@@ -1,6 +1,13 @@
 #ifndef REF_COUNT_H
 #define REF_COUNT_H
 
+namespace base {
+
+/**
+ * Generic smart pointer which points to reference counted object.
+ * Reference counted object should have ref()/deref() methods, and
+ * reference counter starts from zero.
+ */
 template <typename T>
 class Ref {
     T *object;
@@ -38,6 +45,13 @@ public:
         object = r.object;
         object->ref();
     }
+    operator void*() { return object; }
+    bool operator==(const Ref<T>& r) {
+        return object == r.object;
+    }
+    bool operator!=(const Ref<T>& r) {
+        return object != r.object;
+    }
 };
 
 template <typename T>
@@ -47,12 +61,11 @@ public:
     RefCounted (): refCount(0) {}
 
     void ref() {
-        refCount++;
+        __sync_add_and_fetch(&refCount, 1);
     }
 
     void deref() {
-        refCount--;
-        if (refCount == 0) {
+        if (__sync_sub_and_fetch(&refCount, 1) == 0) {
             delete static_cast<T*>(this);
         }
     }
@@ -104,6 +117,15 @@ public:
         object = r.object;
         object->ref();
     }
+    operator void*() { return object; }
+    bool operator==(const Ref<T>& r) {
+        return object == r.object;
+    }
+    bool operator!=(const Ref<T>& r) {
+        return object != r.object;
+    }
 };
+
+}
 
 #endif

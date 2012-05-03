@@ -6,10 +6,82 @@
 #include <vector>
 #include <map>
 #include <stdint.h>
-#include "Port.h"
+#include "Ref.h"
+#include "Stack.h"
+
+namespace rop {
 
 using namespace std;
+using namespace base;
+/**
+ * Byte queue buffer with fixed size.
+ * io operation is done against this structure.
+ */
+struct Buffer {
 
+    static const int BUFFER_SIZE = 4*1024;
+
+    int offset;
+    int size;
+    unsigned char buffer[BUFFER_SIZE];
+
+    Buffer(): offset(0), size(0) { }
+
+    unsigned char read () {
+        unsigned char ret = buffer[offset];
+        offset = (offset+1) % BUFFER_SIZE;
+        size--;
+        return ret;
+    }
+
+    void write (unsigned char d) {
+        buffer[(offset+size) % BUFFER_SIZE] = d;
+        size++;
+    }
+
+    int margin () {
+        return sizeof(buffer) - size;
+    }
+
+    void reset () {
+        offset = 0;
+        size = 0;
+    }
+
+    void drop (int s) {
+        offset = (offset+s) % BUFFER_SIZE;
+        size -= s;
+    }
+
+    unsigned char *begin () {
+        return &buffer[offset];
+    }
+
+    unsigned char *end () {
+        return &buffer[(offset+size) % BUFFER_SIZE];
+    }
+
+    bool hasWrappedData () {
+        return (offset + size) > BUFFER_SIZE;
+    }
+
+    bool hasWrappedMargin () {
+        return (offset > 0) && (offset + size) < BUFFER_SIZE;
+    }
+};
+
+/**
+ * Default template class for Reader. (empty)
+ */
+template <typename T> struct Reader {};
+
+/**
+ * Default template class for Writer. (empty)
+ */
+template <typename T> struct Writer {};
+
+// Utility macros for convenient management of step variable.
+// TRY_READ/TRY_WRITE should be used only for primitive types.
 #define BEGIN_STEP() switch (step) { case 0:
 #define TRY_READ(type,var,stack) do {\
     if (Reader<type>(var).run(stack) == STOPPED) {\
@@ -25,11 +97,12 @@ using namespace std;
 #define CALL() step = __LINE__; return CONTINUE; case __LINE__: 
 #define END_STEP() default:; } return COMPLETE
 
-template<> struct Reader<int8_t>: Frame {
+template<>
+struct Reader<int8_t>: Frame {
     int8_t &obj;
     Reader (int8_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->size < 1) return STOPPED;
         obj = buf->read();
@@ -41,7 +114,7 @@ template<> struct Writer<int8_t>: Frame {
     int8_t &obj;
     Writer (int8_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->margin() < 1) return STOPPED;
         buf->write(obj);
@@ -53,7 +126,7 @@ template<> struct Reader<int16_t>: Frame {
     int16_t &obj;
     Reader (int16_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->size < 2) return STOPPED;
         int i = buf->read();
@@ -67,7 +140,7 @@ template<> struct Writer<int16_t>: Frame {
     int16_t &obj;
     Writer (int16_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->margin() < 2) return STOPPED;
         int i = obj;
@@ -81,7 +154,7 @@ template<> struct Reader<int32_t>: Frame {
     int32_t &obj;
     Reader (int32_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->size < 4) return STOPPED;
         int i = buf->read();
@@ -97,7 +170,7 @@ template<> struct Writer<int32_t>: Frame {
     int32_t &obj;
     Writer (int32_t &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
         if (buf->margin() < 4) return STOPPED;
         int i = obj;
@@ -116,17 +189,18 @@ template<> struct Reader<string>: Frame {
 
     Reader (string &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
+        Buffer *buf;
 
         // read size
         BEGIN_STEP();
         TRY_READ(int32_t, length, stack);
-        obj->clear();
-        obj->reserve(length + 1);
+        obj.clear();
+        obj.reserve(length + 1);
 
         // read each char
         NEXT_STEP();
-        Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
+        buf = reinterpret_cast<Buffer*>(stack->env);
         while (length) {
             if (buf->size) {
                 return STOPPED;
@@ -146,7 +220,8 @@ template<> struct Writer<string>: Frame {
 
     Writer (string &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
+        Buffer *buf;
 
         // write size 
         BEGIN_STEP();
@@ -156,7 +231,7 @@ template<> struct Writer<string>: Frame {
 
         // write chars
         NEXT_STEP();
-        Buffer *buf = reinterpret_cast<Buffer*>(stack->env);
+        buf = reinterpret_cast<Buffer*>(stack->env);
         while (i < obj.length()) {
             if (!buf->margin()) {
                 return STOPPED;
@@ -176,13 +251,13 @@ template<typename T> struct Reader<vector<T> >: Frame {
 
     Reader (vector<T> &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
 
         // read size
         BEGIN_STEP();
         TRY_READ(int32_t, length, stack);
-        obj->clear();
-        obj->reserve(length);
+        obj.clear();
+        obj.reserve(length);
         i = 0;
 
         // read items
@@ -203,17 +278,17 @@ template<typename T> struct Writer<vector<T> >: Frame {
 
     Writer (vector<T> &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
 
         // write size
         BEGIN_STEP();
-        i = obj->size();
+        i = obj.size();
         TRY_WRITE(int32_t, i, stack);
         i = 0;
 
         // write items
         NEXT_STEP();
-        if (i < obj->size()) {
+        if (i < obj.size()) {
             new(stack->allocate(sizeof(Writer<T>))) Writer<T>(obj[i++]);
             return CONTINUE;
         }
@@ -229,7 +304,7 @@ template<typename T, typename U> struct Reader<map<T,U> >: Frame {
 
     Reader (map<T,U> &d): obj(d) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
 
         BEGIN_STEP();
         // read size
@@ -241,12 +316,12 @@ template<typename T, typename U> struct Reader<map<T,U> >: Frame {
         if (n) {
             if ((n & 1) == 0) {
                 // read key
-                stack->newFrame(sizeof(Reader<T>)) Reader<T>(key);
+                stack->push(new(sizeof(Reader<T>)) Reader<T>(key));
                 n--;
                 return CONTINUE;
             } else {
                 // read value
-                stack->newFrame(sizeof(Reader<U>)) Reader<U>(obj[key]);
+                stack->push(new (sizeof(Reader<U>)) Reader<U>(obj[key]));
                 n--;
                 return CONTINUE;
             }
@@ -257,12 +332,13 @@ template<typename T, typename U> struct Reader<map<T,U> >: Frame {
 };
 
 template<typename T, typename U> struct Writer<map<T,U> >: Frame {
-    map<T,U>::iterator iter;
+    map<T,U> &obj;
+    typename map<T,U>::iterator iter;
     bool first;
 
     Writer (map<T,U> &obj): obj(obj) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
 
         // write size
         BEGIN_STEP();
@@ -295,21 +371,18 @@ template <typename T>
 struct Reader<Ref<T> >: Frame {
     Ref<T> &obj;
     Reader (Ref<T> &o): obj(o) {}
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         int i;
         BEGIN_STEP();
         TRY_READ(int8_t, i, stack);
         if (i) {
             obj = new T();
-            stack->pushFrame(new (stack->allocate(sizeof(Reader<T>))) Reader<T>(*obj));
+            stack->push(new (stack->allocate(sizeof(Reader<T>))) Reader<T>(*obj));
             CALL();
         } else {
             obj = 0;
         }
         END_STEP();
-    }
-
-    RESULT run (Stack *stack) {
     }
 };
 
@@ -318,10 +391,10 @@ struct Writer<Ref<T> >: Frame {
     Ref<T> &obj;
     Writer (Ref<T> &o): obj(o) {}
 
-    RESULT run (Stack *stack) {
+    STATE run (Stack *stack) {
         BEGIN_STEP();
         if (obj) {
-            stack->pushFrame(new (stack->allocate(sizeof(Writer<T>))) Writer<T>(*obj));
+            stack->push(new (stack->allocate(sizeof(Writer<T>))) Writer<T>(*obj));
             CALL();
         } else {
             int i = 0;
@@ -331,4 +404,33 @@ struct Writer<Ref<T> >: Frame {
         END_STEP();
     }
 };
+
+template <const int S>
+struct SequenceWriter: Frame {
+    Frame *frames[S];
+    SequenceWriter () {}
+
+    STATE run (Stack *stack) {
+        if (step >= S) {
+            return COMPLETE;
+        }
+        stack->push(frames[step++]);
+        return CONTINUE;
+    }
+};
+
+template <const int S>
+struct SequenceReader: Frame {
+    void *values[S];
+    Frame *frames[S];
+    STATE run (Stack *stack) {
+        if (step >= S) {
+            return COMPLETE;
+        }
+        stack->push(frames[step++]);
+        return CONTINUE;
+    }
+};
+
+}
 #endif
