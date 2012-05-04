@@ -99,6 +99,16 @@ template <typename T> struct Writer {};
 #define END_STEP() default:; } return COMPLETE
 
 template<>
+struct Reader<void>: Frame {
+    STATE run (Stack *stack) { return COMPLETE; }
+};
+
+template<>
+struct Writer<void>: Frame {
+    STATE run (Stack *stack) { return COMPLETE; }
+};
+
+template<>
 struct Reader<int8_t>: Frame {
     int8_t &obj;
     Reader (int8_t &o): obj(o) {}

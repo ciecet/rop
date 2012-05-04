@@ -16,6 +16,7 @@ using namespace rop;
 struct EchoImpl: Exportable<Echo> {
     string echo (string msg);
     string concat (vector<string> msgs);
+    void touchmenot () throw(int);
 };
 
 string EchoImpl::echo (string msg)
@@ -34,17 +35,22 @@ string EchoImpl::concat (vector<string> msgs)
     return ret;
 }
 
+void EchoImpl::touchmenot () throw(int)
+{
+    printf("THROW 3!\n");
+    throw 3;
+}
+
 void test1 ()
 {
     int p0[2], p1[2];
     pipe2(p0, O_NONBLOCK);
     pipe2(p1, O_NONBLOCK);
 
-    Registry reg;
-
     if (fork()) {
         Log l("client ");
         // client
+        Registry reg;
         UnixTransport trans(reg, p0[0], p1[1]);
 
         l.info("getting remote Echo...\n");
@@ -58,9 +64,17 @@ void test1 ()
         args.push_back("b");
         args.push_back("c");
         printf("%s\n", e.concat(args).c_str());
+        try {
+            printf("Invoking touchmenot()\n");
+            e.touchmenot();
+            printf("Silently returned.\n");
+        } catch (int &i) {
+            printf("Got exception :%d\n", i);
+        }
     } else {
         Log l("server ");
         // server
+        Registry reg;
         UnixTransport trans(reg, p1[0], p0[1]);
         reg.registerExportable("Echo", new EchoImpl());
         l.info("enter loop...\n");

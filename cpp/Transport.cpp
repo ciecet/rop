@@ -154,10 +154,13 @@ struct MessageReader: Frame {
                 request->messageHead = messageHead;
                 log.debug("created a request instance. %08x\n", request);
             }
-            stack->push(request->argumentsReader);
-            log.debug("reading arguments...\n");
-            CALL();
-            log.debug("reading arguments...done \n");
+
+            if (request->argumentsReader) {
+                stack->push(request->argumentsReader);
+                log.debug("reading arguments...\n");
+                CALL();
+                log.debug("reading arguments...done \n");
+            }
             port->requests.push_back(request);
             request = 0;
 
