@@ -16,7 +16,7 @@ using namespace rop;
 struct EchoImpl: Exportable<Echo> {
     string echo (string msg);
     string concat (vector<string> msgs);
-    void touchmenot () throw(int);
+    void touchmenot ();
 };
 
 string EchoImpl::echo (string msg)
@@ -35,10 +35,10 @@ string EchoImpl::concat (vector<string> msgs)
     return ret;
 }
 
-void EchoImpl::touchmenot () throw(int)
+void EchoImpl::touchmenot ()
 {
     printf("THROW 3!\n");
-    throw 3;
+    throw TestException(3);
 }
 
 void test1 ()
@@ -68,8 +68,8 @@ void test1 ()
             printf("Invoking touchmenot()\n");
             e.touchmenot();
             printf("Silently returned.\n");
-        } catch (int &i) {
-            printf("Got exception :%d\n", i);
+        } catch (TestException &e) {
+            printf("Got exception :%d\n", e.i);
         }
     } else {
         Log l("server ");

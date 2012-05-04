@@ -2,11 +2,13 @@
 #include <vector>
 #include "Remote.h"
 #include "Log.h"
+#include "TestException.h"
 
 struct Echo: rop::Interface {
     virtual std::string echo (std::string msg) = 0;
     virtual std::string concat (std::vector<std::string> msgs) = 0;
-    virtual void touchmenot () throw(int) = 0;
+    // may throws TestException
+    virtual void touchmenot () = 0;
 };
 
 namespace rop {
@@ -60,7 +62,7 @@ struct Stub<Echo>: Echo {
         return ret.value0;
     }
 
-    void touchmenot () throw(int) {
+    void touchmenot () {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
@@ -69,8 +71,8 @@ struct Stub<Echo>: Echo {
 
         struct _:ReturnReader<2> {
             Reader<void> frame0;
-            int value1;
-            Reader<int> frame1;
+            TestException value1;
+            Reader<TestException> frame1;
             _(): frame0(), frame1(value1) {
                 values[0] = 0;
                 frames[0] = &frame0;
@@ -169,8 +171,8 @@ struct Skeleton<Echo>: SkeletonBase {
 
         struct ret_t: ReturnWriter<2> {
             Writer<void> frame0;
-            int value1;
-            Writer<int> frame1;
+            TestException value1;
+            Writer<TestException> frame1;
             ret_t(): frame0(), frame1(value1) {
                 frames[0] = &frame0;
                 frames[1] = &frame1;
@@ -186,8 +188,8 @@ struct Skeleton<Echo>: SkeletonBase {
             try {
                 object->touchmenot();
                 ret.index = 0;
-            } catch (int &ret1) {
-                ret.value1 = ret1;
+            } catch (TestException &e1) {
+                ret.value1 = e1;
                 ret.index = 1;
             }
         }

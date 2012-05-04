@@ -3,9 +3,14 @@ package test {
         String name;
         i32 birth_year;
     }
+
+    exception TestException {
+        i32 i;
+    }
+
     interface Echo {
         String echo (String msg);
         String concat (List<String> msgs);
-        String hi (Person arg);
+        void touchmenot () throws TestException;
     }
 }
