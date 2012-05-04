@@ -1,6 +1,7 @@
 #include "Remote.h"
 #include "Log.h"
 
+using namespace std;
 using namespace rop;
 
 struct RegistrySkeleton: SkeletonBase {

@@ -6,6 +6,8 @@
 #include "UnixTransport.h"
 #include "Log.h"
 
+using namespace std;
+using namespace base;
 using namespace rop;
 
 void UnixTransport::loop ()

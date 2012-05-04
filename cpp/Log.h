@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <string>
 
-using namespace std;
-
 struct Log {
 
     const char *prefix;
@@ -21,7 +19,7 @@ struct Log {
 
     inline void fatal (const char *fmt, ...) {
         va_list args;
-        string s("[!!] ");
+        std::string s("[!!] ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);
@@ -31,7 +29,7 @@ struct Log {
 
     inline void error (const char *fmt, ...) {
         va_list args;
-        string s(" [!] ");
+        std::string s(" [!] ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);
@@ -41,7 +39,7 @@ struct Log {
 
     inline void warn (const char *fmt, ...) {
         va_list args;
-        string s(" [?] ");
+        std::string s(" [?] ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);
@@ -51,7 +49,7 @@ struct Log {
 
     inline void info (const char *fmt, ...) {
         va_list args;
-        string s("     ");
+        std::string s("     ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);
@@ -61,7 +59,7 @@ struct Log {
 
     inline void debug (const char *fmt, ...) {
         va_list args;
-        string s("   . ");
+        std::string s("   . ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);
@@ -71,7 +69,7 @@ struct Log {
 
     inline void trace (const char *fmt, ...) {
         va_list args;
-        string s("  .. ");
+        std::string s("  .. ");
         s += prefix;
         s += fmt;
         va_start(args, fmt);

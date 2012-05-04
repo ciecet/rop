@@ -3,10 +3,8 @@ TARGET=test
 srcs = $(wildcard *.cpp)
 headers = $(wildcard *.h)
 
-$(TARGET): $(srcs)
-	g++ -g -o $@ $^
-
-$(srcs):: $(headers)
+$(TARGET): $(srcs) $(headers)
+	g++ -O2 -g -o $@ $(srcs)
 
 .PHONY: run
 run: $(TARGET)

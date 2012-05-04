@@ -1,26 +1,24 @@
 #ifndef REMOTE_H
 #define REMOTE_H
 
+#include <stdint.h>
+#include <pthread.h>
 #include <map>
+#include <vector>
 #include <string>
 #include <deque>
-#include <pthread.h>
-#include <stdint.h>
 #include "Ref.h"
 #include "Stack.h"
-#include "TypeIO.h"
+#include "Types.h"
 #include "Log.h"
+
+namespace rop {
 
 template <typename T>
 struct Skeleton {};
 
 template <typename T>
 struct Stub {};
-
-namespace rop {
-
-using namespace base;
-using namespace std;
 
 struct Transport;
 struct Port;
@@ -30,15 +28,15 @@ struct Remote;
 struct SkeletonBase;
 struct Request;
 struct Return;
-typedef Ref<Interface> InterfaceRef;
-typedef Ref<Remote> RemoteRef;
+typedef base::Ref<Interface> InterfaceRef;
+typedef base::Ref<Remote> RemoteRef;
 
 /**
  * Super class of every skeletons.
  * Each instance corresponds to a raw object. 
  * This is destroyed when notified by notifyRemoteDestroy().
  */
-struct SkeletonBase: RefCounted<SkeletonBase> {
+struct SkeletonBase: base::RefCounted<SkeletonBase> {
     int id; // positive.
     InterfaceRef object;
     SkeletonBase (Interface *o): object(o) {}
@@ -52,10 +50,10 @@ struct SkeletonBase: RefCounted<SkeletonBase> {
  */
 struct Registry {
     int nextSkeletonId;
-    map<string,InterfaceRef> exportables; // root objects exported to peer.
-    map<int,Remote*> remotes; // remote handles shared by stub objects
-    map<int,SkeletonBase*> skeletons; // skeletons locating actual local objects.
-    map<Interface*,SkeletonBase*> skeletonByExportable; // local obj -> skel
+    std::map<std::string,InterfaceRef> exportables; // root objects exported to peer.
+    std::map<int,Remote*> remotes; // remote handles shared by stub objects
+    std::map<int,SkeletonBase*> skeletons; // skeletons locating actual local objects.
+    std::map<Interface*,SkeletonBase*> skeletonByExportable; // local obj -> skel
 
     Transport *transport; // connection to peer.
 
@@ -77,7 +75,7 @@ struct Registry {
      */
     SkeletonBase *createSkeleton ();
 
-    void registerExportable (string objname, InterfaceRef exp) {
+    void registerExportable (std::string objname, InterfaceRef exp) {
         exportables[objname] = exp;
     }
 
@@ -91,9 +89,9 @@ struct Registry {
     /**
      * Get a remote object exported by the peer.
      * behaves as if this was a stub.
-     * NOTE that Remote instance if ref-counted. 
+     * NOTE that Remote instance if base::Ref-counted. 
      */
-    Remote *getRemote (string objname);
+    Remote *getRemote (std::string objname);
 
     /**
      * Notifies to the remote peer that given remote object was no longer
@@ -122,8 +120,8 @@ struct Registry {
  */
 struct Transport {
     Registry *registry;
-    map<int,Port*> ports;
-    vector<Port*> freePorts;
+    std::map<int,Port*> ports;
+    std::vector<Port*> freePorts;
     pthread_mutex_t monitor;
     Transport (Registry &r): registry(&r) {
         registry->setTransport(const_cast<Transport*>(this));
@@ -164,17 +162,17 @@ struct Port {
      */
     int32_t id;
     /** waiting returns for remote call. not owned. */
-    deque<Return*> returns;
+    std::deque<Return*> returns;
     /** Pending call request. owned. */
-    deque<Request*> requests;
+    std::deque<Request*> requests;
     /**
      * Last request which was just completed.
      * Also used for call chaining.
      */
     Request *lastRequest;
 
-    Stack reader;
-    Stack writer;
+    base::Stack reader;
+    base::Stack writer;
 
     // ready to serve incoming reenterant request
     // until all return value is received.
@@ -192,13 +190,13 @@ struct Port {
      * read incoming byte streams from the buffer.
      * Returns either STOPPED or COMPLETE or ABORT.
      */
-    Frame::STATE read (Buffer *buf);
+    base::Frame::STATE read (Buffer *buf);
 
     /**
      * write out-going data to the buffer.
      * Returns either STOPPED or COMPLETE or ABORT.
      */
-    Frame::STATE write (Buffer *buf);
+    base::Frame::STATE write (Buffer *buf);
 
     /** Flush out-going messages synchronously. */
     void flush ();
@@ -230,17 +228,17 @@ struct Port {
  */
 struct Request {
     int8_t messageHead;
-    Frame *argumentsReader;
-    Frame *returnWriter;
+    base::Frame *argumentsReader;
+    base::Frame *returnWriter;
     virtual ~Request () {}
     virtual void call () {}
 };
 
 /**
  * Unique handle of each skeleton of remote peer.
- * This is ref-counted by stub instances, and notifies to the peer on destroy.
+ * This is base::Ref-counted by stub instances, and notifies to the peer on destroy.
  */
-struct Remote: RefCounted<Remote> {
+struct Remote: base::RefCounted<Remote> {
     int id; // negative
     Registry *registry;
     ~Remote () {
@@ -254,7 +252,7 @@ struct Remote: RefCounted<Remote> {
  * Skeleton must have null remote.
  * Stub must return null on createSkeleton().
  */
-struct Interface: RefCounted<Interface> {
+struct Interface: base::RefCounted<Interface> {
     RemoteRef remote;
     virtual SkeletonBase *createSkeleton () { return 0; }
     virtual ~Interface () {}
@@ -273,7 +271,7 @@ struct Exportable: T {
 /**
  * Return value holder.
  */
-struct Return: Frame {
+struct Return: base::Frame {
     int index; /** type of return. 0 for normal type, 1+ for exceptions */
     void *value;
     Return (): index(-1) {}
@@ -285,9 +283,9 @@ struct Return: Frame {
 template <const int S>
 struct ReturnReader: Return {
     void *values[S];
-    Frame *frames[S];
+    base::Frame *frames[S];
 
-    STATE run (Stack *stack) {
+    STATE run (base::Stack *stack) {
         BEGIN_STEP();
         TRY_READ(int32_t, index, stack);
 
@@ -305,12 +303,12 @@ struct ReturnReader: Return {
  */
 template <const int S>
 struct ReturnWriter: Return {
-    Frame *frames[S];
+    base::Frame *frames[S];
     int8_t messageHeader;
 
     ReturnWriter (): messageHeader(0x3<<6) {}
 
-    STATE run (Stack *stack) {
+    STATE run (base::Stack *stack) {
         BEGIN_STEP();
         TRY_WRITE(int8_t, messageHeader, stack);
 
@@ -331,11 +329,11 @@ struct ReturnWriter: Return {
  * Read object could be either stub or raw object.
  */
 template <typename T>
-struct InterfaceReader: Frame {
-    Ref<T> &object;
+struct InterfaceReader: base::Frame {
+    base::Ref<T> &object;
     Registry *registry;
-    InterfaceReader (Ref<T> &o, Registry *r): object(o), registry(r) {}
-    STATE run (Stack *stack) {
+    InterfaceReader (base::Ref<T> &o, Registry *r): object(o), registry(r) {}
+    STATE run (base::Stack *stack) {
         int8_t i;
         int id;
         BEGIN_STEP();
@@ -361,15 +359,15 @@ struct InterfaceReader: Frame {
     }
 };
 
-struct InterfaceWriter: Frame {
+struct InterfaceWriter: base::Frame {
 
     InterfaceRef &object;
     Registry *registry;
     int id;
 
-    InterfaceWriter (Ref<Interface> &o, Registry *r): object(o), registry(r) {}
+    InterfaceWriter (base::Ref<Interface> &o, Registry *r): object(o), registry(r) {}
 
-    STATE run (Stack *stack) {
+    STATE run (base::Stack *stack) {
         int8_t i;
 
         BEGIN_STEP();
@@ -402,7 +400,7 @@ struct RequestWriter: SequenceWriter<S+3> {
     Writer<int8_t> frame0;
     Writer<int32_t> frame1;
     Writer<int16_t> frame2;
-    Frame **args;
+    base::Frame **args;
 
     RequestWriter (int8_t h, int32_t o, int16_t m):
             messageHead(h), objectId(o), methodIndex(m),

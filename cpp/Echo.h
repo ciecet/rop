@@ -1,33 +1,33 @@
 #include <string>
+#include <vector>
 #include "Remote.h"
 #include "Log.h"
 
-using namespace base;
-using namespace rop;
-
-struct Echo: Interface {
-    virtual string echo (string msg) = 0;
-    virtual string concat (vector<string> msgs) = 0;
+struct Echo: rop::Interface {
+    virtual std::string echo (std::string msg) = 0;
+    virtual std::string concat (std::vector<std::string> msgs) = 0;
     virtual void touchmenot () throw(int) = 0;
 };
+
+namespace rop {
 
 template<>
 struct Stub<Echo>: Echo {
 
-    string echo (string msg) {
+    std::string echo (std::string msg) {
         Log l("stub ");
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
         l.debug("sending %d.%d...\n", remote->id, 0);
         RequestWriter<1> req(0, remote->id, 0);
-        Writer<string> arg0(msg);
+        Writer<std::string> arg0(msg);
         req.args[0] = &arg0;
         p->writer.push(&req);
 
         struct _:ReturnReader<1> {
-            string value0;
-            Reader<string> frame0;
+            std::string value0;
+            Reader<std::string> frame0;
             _(): frame0(value0) {
                 values[0] = &value0;
                 frames[0] = &frame0;
@@ -38,18 +38,18 @@ struct Stub<Echo>: Echo {
         return ret.value0;
     }
 
-    string concat (vector<string> msgs) {
+    std::string concat (std::vector<std::string> msgs) {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
         RequestWriter<1> req(0, remote->id, 1);
-        Writer<vector<string> > arg0(msgs);
+        Writer<std::vector<std::string> > arg0(msgs);
         req.args[0] = &arg0;
         p->writer.push(&req);
 
         struct _:ReturnReader<1> {
-            string value0;
-            Reader<string> frame0;
+            std::string value0;
+            Reader<std::string> frame0;
             _(): frame0(value0) {
                 values[0] = &value0;
                 frames[0] = &frame0;
@@ -92,14 +92,14 @@ struct Stub<Echo>: Echo {
 template<>
 struct Skeleton<Echo>: SkeletonBase {
 
-    Skeleton (Interface *o): SkeletonBase(o) {}
+    Skeleton (rop::Interface *o): SkeletonBase(o) {}
 
     struct __req_echo: Request {
         Echo *object;
 
         struct args_t: SequenceReader<1> {
-            string arg0;
-            Reader<string> frame0;
+            std::string arg0;
+            Reader<std::string> frame0;
             args_t(): frame0(arg0) {
                 values[0] = &arg0;
                 frames[0] = &frame0;
@@ -107,8 +107,8 @@ struct Skeleton<Echo>: SkeletonBase {
         } args;
 
         struct ret_t: ReturnWriter<1> {
-            string ret0;
-            Writer<string> frame0;
+            std::string ret0;
+            Writer<std::string> frame0;
             ret_t(): frame0(ret0) {
                 frames[0] = &frame0;
             }
@@ -133,8 +133,8 @@ struct Skeleton<Echo>: SkeletonBase {
         Echo *object;
 
         struct args_t: SequenceReader<1> {
-            vector<string> arg0;
-            Reader<vector<string> > frame0;
+            std::vector<std::string> arg0;
+            Reader<std::vector<std::string> > frame0;
             args_t(): frame0(arg0) {
                 values[0] = &arg0;
                 frames[0] = &frame0;
@@ -142,8 +142,8 @@ struct Skeleton<Echo>: SkeletonBase {
         } args;
 
         struct ret_t: ReturnWriter<1> {
-            string ret0;
-            Writer<string> frame0;
+            std::string ret0;
+            Writer<std::string> frame0;
             ret_t(): frame0(ret0) {
                 frames[0] = &frame0;
             }
@@ -203,3 +203,5 @@ struct Skeleton<Echo>: SkeletonBase {
         }
     }
 };
+
+}

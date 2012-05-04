@@ -1,5 +1,5 @@
-#ifndef REF_COUNT_H
-#define REF_COUNT_H
+#ifndef REF_H
+#define REF_H
 
 namespace base {
 

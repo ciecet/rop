@@ -1,7 +1,10 @@
 #include <pthread.h>
+#include <map>
 #include "Remote.h"
 #include "Log.h"
 
+using namespace std;
+using namespace base;
 using namespace rop;
 
 static __thread int rpcThreadId;
