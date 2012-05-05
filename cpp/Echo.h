@@ -4,14 +4,89 @@
 #include "Log.h"
 #include "TestException.h"
 
+struct EchoCallback: rop::Interface {
+    virtual void call (std::string msg) = 0;
+};
+
 struct Echo: rop::Interface {
     virtual std::string echo (std::string msg) = 0;
     virtual std::string concat (std::vector<std::string> msgs) = 0;
     // may throws TestException
     virtual void touchmenot () = 0;
+    virtual void recursiveEcho (std::string msg, base::Ref<EchoCallback> cb) = 0;
 };
 
 namespace rop {
+
+template<>
+struct Stub<EchoCallback>: EchoCallback {
+    void call (std::string msg) {
+        Log l("echoCallback ");
+        
+        Transport *trans = remote->registry->transport;
+        Port *p = trans->getPort();
+
+        RequestWriter<1> req(0, remote->id, 0);
+        Writer<std::string> arg0(msg);
+        req.args[0] = &arg0;
+        p->writer.push(&req);
+
+        struct _:ReturnReader<1> {
+            Reader<void> frame0;
+            _(): frame0() {
+                values[0] = 0;
+                frames[0] = &frame0;
+            }
+        } ret;
+        p->addReturn(&ret);
+        p->flushAndWait();
+    }
+};
+
+template<>
+struct Skeleton<EchoCallback>: SkeletonBase {
+
+    Skeleton (rop::Interface *o): SkeletonBase(o) {}
+
+    struct __req_call: Request {
+        EchoCallback *object;
+
+        struct args_t: SequenceReader<1> {
+            std::string arg0;
+            Reader<std::string> frame0;
+            args_t(): frame0(arg0) {
+                values[0] = &arg0;
+                frames[0] = &frame0;
+            }
+        } args;
+
+        struct ret_t: ReturnWriter<1> {
+            Writer<void> frame0;
+            ret_t(): frame0() {
+                frames[0] = &frame0;
+            }
+        } ret;
+
+        __req_call(EchoCallback *o): object(o) {
+            argumentsReader = &args;
+            returnWriter = &ret;
+        }
+
+        void call () {
+            object->call(args.arg0);
+            ret.index = 0;
+        }
+    };
+
+    Request *createRequest (int mid) {
+        EchoCallback *o = reinterpret_cast<EchoCallback*>(object.get());
+        switch (mid) {
+        case 0: return new __req_call(o);
+        default: return 0;
+        }
+    }
+};
+
 
 template<>
 struct Stub<Echo>: Echo {
@@ -88,6 +163,27 @@ struct Stub<Echo>: Echo {
         case 1:
             throw ret.value1;
         }
+    }
+
+    void recursiveEcho (std::string msg, base::Ref<EchoCallback> cb) {
+        Transport *trans = remote->registry->transport;
+        Port *p = trans->getPort();
+
+        RequestWriter<2> req(0, remote->id, 3);
+        Writer<std::string> arg0(msg);
+        req.args[0] = &arg0;
+        InterfaceWriter<EchoCallback> arg1(cb);
+        req.args[1] = &arg1;
+        p->writer.push(&req);
+
+        struct _:ReturnReader<1> {
+            Reader<void> frame0;
+            _(): frame0() {
+                frames[0] = &frame0;
+            }
+        } ret;
+        p->addReturn(&ret);
+        p->flushAndWait();
     }
 };
 
@@ -195,12 +291,47 @@ struct Skeleton<Echo>: SkeletonBase {
         }
     };
 
+    struct __req_recursiveEcho: Request {
+        Echo *object;
+
+        struct args_t: SequenceReader<2> {
+            std::string arg0;
+            Reader<std::string> frame0;
+            base::Ref<EchoCallback> arg1;
+            InterfaceReader<EchoCallback> frame1;
+            args_t(): frame0(arg0), frame1(arg1) {
+                values[0] = &arg0;
+                frames[0] = &frame0;
+                values[1] = &arg1;
+                frames[1] = &frame1;
+            }
+        } args;
+
+        struct ret_t: ReturnWriter<1> {
+            Writer<void> frame0;
+            ret_t(): frame0() {
+                frames[0] = &frame0;
+            }
+        } ret;
+
+        __req_recursiveEcho(Echo *o): object(o) {
+            argumentsReader = &args;
+            returnWriter = &ret;
+        }
+
+        void call () {
+            object->recursiveEcho(args.arg0, args.arg1);
+            ret.index = 0;
+        }
+    };
+
     Request *createRequest (int mid) {
         Echo *o = reinterpret_cast<Echo*>(object.get());
         switch (mid) {
         case 0: return new __req_echo(o);
         case 1: return new __req_concat(o);
         case 2: return new __req_touchmenot(o);
+        case 3: return new __req_recursiveEcho(o);
         default: return 0;
         }
     }

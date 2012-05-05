@@ -4,8 +4,11 @@ srcs = $(wildcard *.cpp)
 headers = $(wildcard *.h)
 
 $(TARGET): $(srcs) $(headers)
-	g++ -O2 -g -o $@ $(srcs)
+	g++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
 
-.PHONY: run
+.PHONY: run grun
 run: $(TARGET)
 	./$(TARGET)
+
+grun: $(TARGET)
+	gdb ./$(TARGET)

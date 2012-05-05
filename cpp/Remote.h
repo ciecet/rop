@@ -3,16 +3,461 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <new>
 #include <map>
 #include <vector>
 #include <string>
 #include <deque>
 #include "Ref.h"
 #include "Stack.h"
-#include "Types.h"
 #include "Log.h"
 
 namespace rop {
+
+/**
+ * Byte queue buffer with fixed size.
+ * io operation is done against this structure.
+ */
+struct Buffer {
+
+    static const int BUFFER_SIZE = 4*1024;
+
+    int offset;
+    int size;
+    unsigned char buffer[BUFFER_SIZE];
+
+    Buffer(): offset(0), size(0) { }
+
+    unsigned char read () {
+        unsigned char ret = buffer[offset];
+        offset = (offset+1) % BUFFER_SIZE;
+        size--;
+        return ret;
+    }
+
+    void write (unsigned char d) {
+        buffer[(offset+size) % BUFFER_SIZE] = d;
+        size++;
+    }
+
+    int margin () {
+        return sizeof(buffer) - size;
+    }
+
+    void reset () {
+        offset = 0;
+        size = 0;
+    }
+
+    void drop (int s) {
+        offset = (offset+s) % BUFFER_SIZE;
+        size -= s;
+    }
+
+    unsigned char *begin () {
+        return &buffer[offset];
+    }
+
+    unsigned char *end () {
+        return &buffer[(offset+size) % BUFFER_SIZE];
+    }
+
+    bool hasWrappedData () {
+        return (offset + size) > BUFFER_SIZE;
+    }
+
+    bool hasWrappedMargin () {
+        return (offset > 0) && (offset + size) < BUFFER_SIZE;
+    }
+};
+
+struct Port;
+struct PortStack: base::Stack {
+    Port *port;
+    Buffer *buffer;
+    PortStack (Port *p): port(p), buffer(0) {}
+};
+
+/**
+ * Default template class for Reader. (empty)
+ */
+template <typename T> struct Reader {};
+
+/**
+ * Default template class for Writer. (empty)
+ */
+template <typename T> struct Writer {};
+
+// Utility macros for convenient management of step variable.
+// TRY_READ/TRY_WRITE should be used only for primitive types.
+#define BEGIN_STEP() switch (step) { case 0:
+#define TRY_READ(type,var,stack) do {\
+    if (Reader<type>(var).run(stack) == STOPPED) {\
+        return STOPPED;\
+    }\
+} while (0)
+#define TRY_WRITE(type,var,buf) do {\
+    if (Writer<type>(var).run(stack) == STOPPED) {\
+        return STOPPED;\
+    }\
+} while (0)
+#define NEXT_STEP() step = __LINE__; case __LINE__: 
+#define CALL() step = __LINE__; return CONTINUE; case __LINE__: 
+#define END_STEP() default:; } return COMPLETE
+
+template<>
+struct Reader<void>: base::Frame {
+    STATE run (base::Stack *stack) { return COMPLETE; }
+};
+
+template<>
+struct Writer<void>: base::Frame {
+    STATE run (base::Stack *stack) { return COMPLETE; }
+};
+
+template<>
+struct Reader<int8_t>: base::Frame {
+    int8_t &obj;
+    Reader (int8_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->size < 1) return STOPPED;
+        obj = buf->read();
+        return COMPLETE;
+    }
+};
+
+template<> struct Writer<int8_t>: base::Frame {
+    int8_t &obj;
+    Writer (int8_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->margin() < 1) return STOPPED;
+        buf->write(obj);
+        return COMPLETE;
+    }
+};
+
+template<> struct Reader<int16_t>: base::Frame {
+    int16_t &obj;
+    Reader (int16_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->size < 2) return STOPPED;
+        int i = buf->read();
+        i = (i<<8) + buf->read();
+        obj = i;
+        return COMPLETE;
+    }
+};
+
+template<> struct Writer<int16_t>: base::Frame {
+    int16_t &obj;
+    Writer (int16_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->margin() < 2) return STOPPED;
+        int i = obj;
+        buf->write(i>>8);
+        buf->write(i);
+        return COMPLETE;
+    }
+};
+
+template<> struct Reader<int32_t>: base::Frame {
+    int32_t &obj;
+    Reader (int32_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->size < 4) return STOPPED;
+        int i = buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        obj = i;
+        return COMPLETE;
+    }
+};
+
+template<> struct Writer<int32_t>: base::Frame {
+    int32_t &obj;
+    Writer (int32_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->margin() < 4) return STOPPED;
+        int i = obj;
+        buf->write(i>>24);
+        buf->write(i>>16);
+        buf->write(i>>8);
+        buf->write(i);
+        return COMPLETE;
+    }
+};
+
+template<> struct Reader<std::string>: base::Frame {
+
+    std::string &obj;
+    int length;
+
+    Reader (std::string &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *buf;
+
+        // read size
+        BEGIN_STEP();
+        TRY_READ(int32_t, length, stack);
+        obj.clear();
+        obj.reserve(length);
+
+        // read each char
+        NEXT_STEP();
+        buf = static_cast<PortStack*>(stack)->buffer;
+        while (length) {
+            if (!buf->size) {
+                return STOPPED;
+            }
+            obj.push_back(static_cast<char>(buf->read()));
+            length--;
+        }
+
+        END_STEP();
+    }
+};
+
+template<> struct Writer<std::string>: base::Frame {
+
+    std::string &obj;
+    int i;
+
+    Writer (std::string &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *buf;
+
+        // write size 
+        BEGIN_STEP();
+        i = obj.size();
+        TRY_WRITE(int32_t, i, stack);
+        i = 0;
+
+        // write chars
+        NEXT_STEP();
+        buf = static_cast<PortStack*>(stack)->buffer;
+        while (i < obj.length()) {
+            if (!buf->margin()) {
+                return STOPPED;
+            }
+            buf->write(obj.at(i++));
+        }
+
+        END_STEP();
+    }
+};
+
+template<typename T> struct Reader<std::vector<T> >: base::Frame {
+
+    std::vector<T> &obj;
+    int length;
+    int i;
+
+    Reader (std::vector<T> &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+
+        // read size
+        BEGIN_STEP();
+        TRY_READ(int32_t, length, stack);
+        obj.clear();
+        obj.resize(length);
+        i = 0;
+
+        // read items
+        NEXT_STEP();
+        if (i < length) {
+            stack->push(new(stack->allocate(sizeof(Reader<T>))) Reader<T>(obj[i++]));
+            return CONTINUE;
+        }
+
+        END_STEP();
+    }
+};
+
+template<typename T> struct Writer<std::vector<T> >: base::Frame {
+
+    std::vector<T> &obj;
+    int i;
+
+    Writer (std::vector<T> &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+
+        // write size
+        BEGIN_STEP();
+        i = obj.size();
+        TRY_WRITE(int32_t, i, stack);
+        i = 0;
+
+        // write items
+        NEXT_STEP();
+        if (i < obj.size()) {
+            stack->push(new(stack->allocate(sizeof(Writer<T>))) Writer<T>(obj[i++]));
+            return CONTINUE;
+        }
+
+        END_STEP();
+    }
+};
+
+template<typename T, typename U> struct Reader<std::map<T,U> >: base::Frame {
+    std::map<T,U> &obj;
+    int n;
+    T key;
+
+    Reader (std::map<T,U> &d): obj(d) {}
+
+    STATE run (base::Stack *stack) {
+
+        BEGIN_STEP();
+        // read size
+        TRY_READ(int32_t, n, stack);
+        obj->clear();
+        n *= 2;
+
+        NEXT_STEP();
+        if (n) {
+            if ((n & 1) == 0) {
+                // read key
+                stack->push(new(sizeof(Reader<T>)) Reader<T>(key));
+                n--;
+                return CONTINUE;
+            } else {
+                // read value
+                stack->push(new (sizeof(Reader<U>)) Reader<U>(obj[key]));
+                n--;
+                return CONTINUE;
+            }
+        }
+
+        END_STEP();
+    }
+};
+
+template<typename T, typename U> struct Writer<std::map<T,U> >: base::Frame {
+    std::map<T,U> &obj;
+    typename std::map<T,U>::iterator iter;
+    bool first;
+
+    Writer (std::map<T,U> &obj): obj(obj) {}
+
+    STATE run (base::Stack *stack) {
+
+        // write size
+        BEGIN_STEP();
+        int size = obj->size();
+        TRY_WRITE(int32_t, size, stack);
+        iter = obj->begin();
+        first = true;
+
+        // write key and value
+        NEXT_STEP();
+        if (iter != obj->end()) {
+            if (first) {
+                stack->push(new(stack->allocate(sizeof(Writer<T>))) Writer<T>(
+                        const_cast<T*>(&iter->first)));
+                first = false;
+                return CONTINUE;
+            } else {
+                stack->push(new(stack->allocate(sizeof(Writer<U>))) Writer<U>(iter->second));
+                iter++;
+                first = true;
+                return CONTINUE;
+            }
+        }
+
+        END_STEP();
+    }
+};
+
+template <typename T>
+struct Reader<base::Ref<T> >: base::Frame {
+    base::Ref<T> &obj;
+    Reader (base::Ref<T> &o): obj(o) {}
+    STATE run (base::Stack *stack) {
+        int i;
+        BEGIN_STEP();
+        TRY_READ(int8_t, i, stack);
+        if (i) {
+            obj = new T();
+            stack->push(new (stack->allocate(sizeof(Reader<T>))) Reader<T>(*obj));
+            CALL();
+        } else {
+            obj = 0;
+        }
+        END_STEP();
+    }
+};
+
+template <typename T>
+struct Writer<base::Ref<T> >: base::Frame {
+    base::Ref<T> &obj;
+    Writer (base::Ref<T> &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        BEGIN_STEP();
+        if (obj) {
+            stack->push(new (stack->allocate(sizeof(Writer<T>))) Writer<T>(*obj));
+            CALL();
+        } else {
+            int i = 0;
+            TRY_WRITE(int8_t, i, stack);
+        }
+
+        END_STEP();
+    }
+};
+
+template <const int S>
+struct SequenceWriter: base::Frame {
+    base::Frame *frames[S];
+    SequenceWriter () {}
+
+    STATE run (base::Stack *stack) {
+        
+        if (step >= S) {
+            return COMPLETE;
+        }
+        stack->push(frames[step++]);
+        return CONTINUE;
+    }
+};
+
+template <const int S>
+struct SequenceReader: base::Frame {
+    void *values[S];
+    base::Frame *frames[S];
+    Log log;
+
+    SequenceReader (): log("seqread ") {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (step >= S) {
+            log.debug("exit. bufsize:%d\n", buf->size);
+            return COMPLETE;
+        }
+        log.debug("pushed %08x step:%d/%d bufsize:%d\n",
+                frames[step], step, S, buf->size);
+        stack->push(frames[step++]);
+        return CONTINUE;
+    }
+};
 
 template <typename T>
 struct Skeleton {};
@@ -171,8 +616,8 @@ struct Port {
      */
     Request *lastRequest;
 
-    base::Stack reader;
-    base::Stack writer;
+    PortStack reader;
+    PortStack writer;
 
     // ready to serve incoming reenterant request
     // until all return value is received.
@@ -180,7 +625,7 @@ struct Port {
     pthread_cond_t wakeCondition;
 
     Port (Transport *trans): transport(trans), isWaiting(false),
-            lastRequest(0) {
+            lastRequest(0), reader(this), writer(this) {
         pthread_cond_init(&wakeCondition, 0);
     }
 
@@ -331,8 +776,7 @@ struct ReturnWriter: Return {
 template <typename T>
 struct InterfaceReader: base::Frame {
     base::Ref<T> &object;
-    Registry *registry;
-    InterfaceReader (base::Ref<T> &o, Registry *r): object(o), registry(r) {}
+    InterfaceReader (base::Ref<T> &o): object(o) {}
     STATE run (base::Stack *stack) {
         int8_t i;
         int id;
@@ -349,42 +793,46 @@ struct InterfaceReader: base::Frame {
 
         if (id > 0) {
             object = reinterpret_cast<T*>(
-                    registry->getSkeleton(id)->object.get());
+                    static_cast<PortStack*>(stack)->port->transport->registry->
+                            getSkeleton(id)->object.get());
         } else {
             object = new Stub<T>();
-            object->remote = registry->getRemote(id);
+            object->remote = static_cast<PortStack*>(stack)->port->transport->
+                    registry->getRemote(id);
         }
 
         END_STEP();
     }
 };
 
+template <typename T>
 struct InterfaceWriter: base::Frame {
 
-    InterfaceRef &object;
-    Registry *registry;
+    base::Ref<T> &object;
     int id;
 
-    InterfaceWriter (base::Ref<Interface> &o, Registry *r): object(o), registry(r) {}
+    InterfaceWriter (base::Ref<T> &o): object(o) {}
 
     STATE run (base::Stack *stack) {
+        Log l("infwrite ");
         int8_t i;
 
         BEGIN_STEP();
         if (object) {
+            i = 1;
+            TRY_WRITE(int8_t, i, stack);
+        } else {
             i = 0;
             TRY_WRITE(int8_t, i, stack);
             return COMPLETE;
-        } else {
-            i = 1;
-            TRY_WRITE(int8_t, i, stack);
         }
 
         NEXT_STEP();
         if (object->remote) {
             id = object->remote->id;
         } else {
-            id = registry->getSkeleton(object.get())->id;
+            id = static_cast<PortStack*>(stack)->port->transport->registry->
+                    getSkeleton(object.get())->id;
         }
         TRY_WRITE(int32_t, id, stack);
 

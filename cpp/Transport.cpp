@@ -60,30 +60,6 @@ Port *Transport::getPort (int pid)
     return p;
 }
 
-// private
-static Frame::STATE run (Stack *stack) {
-    Log l("stackrunner ");
-    while (stack->frame) {
-        Frame::STATE s = stack->frame->run(stack);
-        l.debug("running %08x returned %d\n", stack->frame, s);
-        switch (s) {
-        case Frame::STOPPED:
-            return Frame::STOPPED;
-        case Frame::CONTINUE:
-            break;
-        case Frame::COMPLETE:
-            stack->pop();
-            break;
-        case Frame::ABORTED:
-            while (stack->frame) stack->pop();
-            return Frame::ABORTED;
-        default:
-            // should never occur
-            ;
-        }
-    }
-    return Frame::COMPLETE;
-}
 
 // switch (MSB of messageHead)
 // 00: sync call (reenterant)
@@ -109,7 +85,6 @@ struct MessageReader: Frame {
 
     STATE run (Stack *stack) {
         log.debug("run step:%d\n", step);
-        Buffer *buf;
 
         BEGIN_STEP();
         TRY_READ(int8_t, messageHead, stack);
@@ -177,8 +152,7 @@ struct MessageReader: Frame {
         }
 
         // keep reading if buffer is not empty. (optional)
-        buf = reinterpret_cast<Buffer*>(stack->env);
-        if (buf->size) {
+        if (static_cast<PortStack*>(stack)->buffer->size) {
             step = 0;
         }
         END_STEP();
@@ -190,13 +164,13 @@ Frame::STATE Port::read (Buffer *buf) {
         reader.push(new(reader.allocate(sizeof(MessageReader))) MessageReader(this));
     }
 
-    reader.env = buf;
-    return run(&reader);
+    reader.buffer = buf;
+    return reader.run();
 }
 
 Frame::STATE Port::write (Buffer *buf) {
-    writer.env = buf;
-    return run(&writer);
+    writer.buffer = buf;
+    return writer.run();
 }
 
 void Port::flush ()
@@ -220,14 +194,13 @@ void Port::flushAndWait ()
     pthread_mutex_lock(m);
     while (!returns.empty()) {
         if (requests.empty()) {
+            l.debug("calling waitPort in thread:%d\n", rpcThreadId);
             transport->waitPort(this);
+            continue;
         }
 
-        pthread_mutex_unlock(m);
-        // handle reenterant request
-        // TODO: implement
-        pthread_mutex_lock(m);
-        continue;
+        l.info("running reenterant request...\n");
+        handleRequest();
     }
     pthread_mutex_unlock(m);
     isWaiting = false;
@@ -241,18 +214,27 @@ bool Port::handleRequest () {
     Log l("exec ");
 
     Request *req = requests.front();
+    Request *lreq = lastRequest;
+    requests.pop_front();
+    lastRequest = 0;
+    
+    pthread_mutex_unlock(&transport->monitor);
     int ortid = rpcThreadId;
     rpcThreadId = id; // attach to rpc thread while executing the request.
     l.debug("calling!!! %08x\n", req);
     req->call();
     rpcThreadId = ortid;
-    if (lastRequest) {
-        delete lastRequest;
+
+    if (lreq) {
+        delete lreq;
     }
     lastRequest = req;
-    requests.pop_front();
 
-    writer.push(req->returnWriter);
-    flush();
+    if (req->returnWriter) {
+        l.debug("pushing return writer %08x (previous frame:%08x)\n", req->returnWriter, writer.frame);
+        writer.push(req->returnWriter);
+        transport->flushPort(this);
+    }
+    pthread_mutex_lock(&transport->monitor);
     return true;
 }

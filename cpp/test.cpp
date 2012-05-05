@@ -6,17 +6,25 @@
 #include <string>
 #include <vector>
 #include "Remote.h"
-#include "UnixTransport.h"
+#include "SocketTransport.h"
 #include "Echo.h"
 #include "Log.h"
 
 using namespace std;
+using namespace base;
 using namespace rop;
+
+struct EchoCallbackImpl: Exportable<EchoCallback> {
+    void call (std::string msg) {
+        printf("GOT ECHO - %s\n", msg.c_str());
+    }
+};
 
 struct EchoImpl: Exportable<Echo> {
     string echo (string msg);
     string concat (vector<string> msgs);
     void touchmenot ();
+    void recursiveEcho (string msg, Ref<EchoCallback> cb);
 };
 
 string EchoImpl::echo (string msg)
@@ -41,6 +49,12 @@ void EchoImpl::touchmenot ()
     throw TestException(3);
 }
 
+void EchoImpl::recursiveEcho (string msg, Ref<EchoCallback> cb)
+{
+    printf("RECURSIVE ECHO - %s\n", msg.c_str());
+    cb->call(msg);
+}
+
 void test1 ()
 {
     int p0[2], p1[2];
@@ -51,7 +65,7 @@ void test1 ()
         Log l("client ");
         // client
         Registry reg;
-        UnixTransport trans(reg, p0[0], p1[1]);
+        SocketTransport trans(reg, p0[0], p1[1]);
 
         l.info("getting remote Echo...\n");
         Stub<Echo> e;
@@ -71,15 +85,18 @@ void test1 ()
         } catch (TestException &e) {
             printf("Got exception :%d\n", e.i);
         }
+        e.recursiveEcho("rrrrrrrrrrrrrrrrrrrrrrrrrrr", new EchoCallbackImpl());
     } else {
         Log l("server ");
         // server
         Registry reg;
-        UnixTransport trans(reg, p1[0], p0[1]);
+        SocketTransport trans(reg, p1[0], p0[1]);
         reg.registerExportable("Echo", new EchoImpl());
         l.info("enter loop...\n");
         trans.loop();
     }
+
+    sleep(5);
 }
 
 int main ()

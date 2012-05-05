@@ -5,7 +5,7 @@
 
 namespace rop {
 
-struct UnixTransport: Transport {
+struct SocketTransport: Transport {
     int inFd;
     int outFd;
     Buffer inBuffer;
@@ -16,17 +16,19 @@ struct UnixTransport: Transport {
     pthread_t loopThread;
     bool isLooping;
     
-    UnixTransport (Registry &r, int i, int o): Transport(r),
+    SocketTransport (Registry &r, int i, int o): Transport(r),
             inFd(i),outFd(o),isSending(false), inPort(0), isLooping(false) {
         pthread_cond_init(&writableCondition, 0);
     }
-    ~UnixTransport () {
+    ~SocketTransport () {
         pthread_cond_destroy(&writableCondition);
+        close(inFd);
+        close(outFd);
     }
 
     void loop (); // handle reading
     
-    void tryReceive ();
+    void unsafeRead ();
     void waitReadable ();
     void waitWritable ();
 

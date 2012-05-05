@@ -3,14 +3,14 @@
 #include <unistd.h>
 #include <errno.h>
 #include "Remote.h"
-#include "UnixTransport.h"
+#include "SocketTransport.h"
 #include "Log.h"
 
 using namespace std;
 using namespace base;
 using namespace rop;
 
-void UnixTransport::loop ()
+void SocketTransport::loop ()
 {
     Log l("loop ");
     fd_set infdset;
@@ -33,9 +33,10 @@ void UnixTransport::loop ()
             return;
         }
 
+        pthread_mutex_lock(&monitor);
         if (FD_ISSET(inFd, &infdset)) {
             l.info("got message.\n");
-            tryReceive();
+            unsafeRead();
         }
 
         // execute processors
@@ -46,13 +47,13 @@ void UnixTransport::loop ()
             }
             while (i->second->handleRequest());
         }
+        pthread_mutex_unlock(&monitor);
     }
 }
 
-void UnixTransport::tryReceive ()
+void SocketTransport::unsafeRead ()
 {
     Log l("read ");
-    pthread_mutex_lock(&monitor);
 
     while (true) {
 
@@ -103,10 +104,9 @@ void UnixTransport::tryReceive ()
             l.error("Unexpected IO exception.\n");
         }
     }
-    pthread_mutex_unlock(&monitor);
 }
 
-void UnixTransport::waitWritable ()
+void SocketTransport::waitWritable ()
 {
     fd_set infdset;
     fd_set outfdset;
@@ -144,11 +144,13 @@ void UnixTransport::waitWritable ()
     }
 
     if (FD_ISSET(inFd, &infdset)) {
-        tryReceive();
+        pthread_mutex_lock(&monitor);
+        unsafeRead();
+        pthread_mutex_unlock(&monitor);
     }
 }
 
-void UnixTransport::flushPort (Port *p)
+void SocketTransport::flushPort (Port *p)
 {
     Log l("flush ");
     pthread_mutex_lock(&monitor);
@@ -169,8 +171,10 @@ void UnixTransport::flushPort (Port *p)
 
         // fill in buffer
         if (p->writer.frame) {
+            l.info("... write to buffer\n");
             if (p->write(&outBuffer) == Frame::ABORTED) {
                 // TODO: handle abortion.
+                l.error("ABORTED..?\n");
             }
         } else {
             if (outBuffer.size == 0) {
@@ -212,7 +216,7 @@ void UnixTransport::flushPort (Port *p)
     pthread_mutex_unlock(&monitor);
 }
 
-void UnixTransport::waitReadable ()
+void SocketTransport::waitReadable ()
 {
     fd_set infdset;
     fd_set expfdset;
@@ -227,13 +231,20 @@ void UnixTransport::waitReadable ()
     }
 }
 
-void UnixTransport::waitPort (Port *p)
+void SocketTransport::waitPort (Port *p)
 {
+    Log l("waitport ");
     if (isLooping) {
-        pthread_cond_wait(&p->wakeCondition, &monitor);
-        return;
+        pthread_t self = pthread_self();
+        if (!pthread_equal(self, loopThread)) {
+            l.debug("waiting on condvar for port:%d\n", p->id);
+            pthread_cond_wait(&p->wakeCondition, &monitor);
+            return;
+        }
     }
 
+    pthread_mutex_unlock(&monitor);
     waitReadable();
-    tryReceive();
+    pthread_mutex_lock(&monitor);
+    unsafeRead();
 }

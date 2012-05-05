@@ -1,6 +1,8 @@
 #ifndef STACK_H
 #define STACK_H
 
+#include "Log.h"
+
 namespace base {
 
 struct Stack;
@@ -39,7 +41,6 @@ struct Stack {
 
     static const int STACK_SIZE = 1024;
 
-    void *env;
     char stack[STACK_SIZE];
     char *top;
     Frame *frame;
@@ -71,6 +72,31 @@ struct Stack {
                 reinterpret_cast<char*>(f) < stack + STACK_SIZE) {
             f->~Frame();
         }
+    }
+
+    Frame::STATE run () {
+        Log l("stackrunner ");
+        while (frame) {
+            l.debug("running %08x...\n", frame);
+            Frame::STATE s = frame->run(this);
+            l.debug("returned %d\n", s);
+            switch (s) {
+            case Frame::STOPPED:
+                return Frame::STOPPED;
+            case Frame::CONTINUE:
+                break;
+            case Frame::COMPLETE:
+                pop();
+                break;
+            case Frame::ABORTED:
+                while (frame) pop();
+                return Frame::ABORTED;
+            default:
+                // should never occur
+                ;
+            }
+        }
+        return Frame::COMPLETE;
     }
 };
 

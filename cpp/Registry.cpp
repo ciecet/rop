@@ -120,7 +120,7 @@ Remote *Registry::getRemote (string objname)
 
 void Registry::notifyRemoteDestroy (int id)
 {
-    Port *p = transport->getPort();
+    Port *p = transport->getPort(0);
 
     RequestWriter<1> req(0x1<<6, 0, 1);
     Writer<int32_t> arg0(id);
@@ -162,12 +162,14 @@ SkeletonBase *Registry::getSkeleton (Interface *obj)
 
 Registry::~Registry ()
 {
+    Log l("~reg ");
     for (map<int,Remote*>::iterator i = remotes.begin();
             i != remotes.end(); i++) {
         i->second->registry = 0;
     }
     for (map<int,SkeletonBase*>::iterator i = skeletons.begin();
             i != skeletons.end(); i++) {
+        l.debug("removing skel:%d\n", i->second->id);
         delete i->second;
     }
 }
