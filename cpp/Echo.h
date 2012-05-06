@@ -19,6 +19,16 @@ struct Echo: rop::Interface {
 namespace rop {
 
 template<>
+struct Reader<base::Ref<EchoCallback> >: InterfaceReader<EchoCallback> {
+    Reader (base::Ref<EchoCallback> &o): InterfaceReader<EchoCallback>(o) {}
+};
+
+template<>
+struct Writer<base::Ref<EchoCallback> >: InterfaceWriter<EchoCallback> {
+    Writer (base::Ref<EchoCallback> &o): InterfaceWriter<EchoCallback>(o) {}
+};
+
+template<>
 struct Stub<EchoCallback>: EchoCallback {
     void call (std::string msg) {
         Log l("echoCallback ");
@@ -26,18 +36,12 @@ struct Stub<EchoCallback>: EchoCallback {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
-        RequestWriter<1> req(0, remote->id, 0);
         Writer<std::string> arg0(msg);
+        RequestWriter<1> req(0, remote->id, 0);
         req.args[0] = &arg0;
         p->writer.push(&req);
 
-        struct _:ReturnReader<1> {
-            Reader<void> frame0;
-            _(): frame0() {
-                values[0] = 0;
-                frames[0] = &frame0;
-            }
-        } ret;
+        ReturnReader<void> ret;
         p->addReturn(&ret);
         p->flushAndWait();
     }
@@ -50,30 +54,14 @@ struct Skeleton<EchoCallback>: SkeletonBase {
 
     struct __req_call: Request {
         EchoCallback *object;
-
-        struct args_t: SequenceReader<1> {
-            std::string arg0;
-            Reader<std::string> frame0;
-            args_t(): frame0(arg0) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-            }
-        } args;
-
-        struct ret_t: ReturnWriter<1> {
-            Writer<void> frame0;
-            ret_t(): frame0() {
-                frames[0] = &frame0;
-            }
-        } ret;
-
+        ArgumentsReader<std::string> args;
+        ReturnWriter<void> ret;
         __req_call(EchoCallback *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
         }
-
         void call () {
-            object->call(args.arg0);
+            object->call(args.get<std::string>(0));
             ret.index = 0;
         }
     };
@@ -87,6 +75,15 @@ struct Skeleton<EchoCallback>: SkeletonBase {
     }
 };
 
+template<>
+struct Reader<base::Ref<Echo> >: InterfaceReader<Echo> {
+    Reader (base::Ref<Echo> &o): InterfaceReader<Echo>(o) {}
+};
+
+template<>
+struct Writer<base::Ref<Echo> >: InterfaceWriter<Echo> {
+    Writer (base::Ref<Echo> &o): InterfaceWriter<Echo>(o) {}
+};
 
 template<>
 struct Stub<Echo>: Echo {
@@ -102,17 +99,10 @@ struct Stub<Echo>: Echo {
         req.args[0] = &arg0;
         p->writer.push(&req);
 
-        struct _:ReturnReader<1> {
-            std::string value0;
-            Reader<std::string> frame0;
-            _(): frame0(value0) {
-                values[0] = &value0;
-                frames[0] = &frame0;
-            }
-        } ret;
+        ReturnReader<std::string> ret;
         p->addReturn(&ret);
         p->flushAndWait();
-        return ret.value0;
+        return ret.get<std::string>(0);
     }
 
     std::string concat (std::vector<std::string> msgs) {
@@ -124,17 +114,10 @@ struct Stub<Echo>: Echo {
         req.args[0] = &arg0;
         p->writer.push(&req);
 
-        struct _:ReturnReader<1> {
-            std::string value0;
-            Reader<std::string> frame0;
-            _(): frame0(value0) {
-                values[0] = &value0;
-                frames[0] = &frame0;
-            }
-        } ret;
+        ReturnReader<std::string> ret;
         p->addReturn(&ret);
         p->flushAndWait();
-        return ret.value0;
+        return ret.get<std::string>(0);
     }
 
     void touchmenot () {
@@ -144,24 +127,14 @@ struct Stub<Echo>: Echo {
         RequestWriter<0> req(0, remote->id, 2);
         p->writer.push(&req);
 
-        struct _:ReturnReader<2> {
-            Reader<void> frame0;
-            TestException value1;
-            Reader<TestException> frame1;
-            _(): frame0(), frame1(value1) {
-                values[0] = 0;
-                frames[0] = &frame0;
-                values[1] = &value1;
-                frames[1] = &frame1;
-            }
-        } ret;
+        ReturnReader<void,TestException> ret;
         p->addReturn(&ret);
         p->flushAndWait();
         switch(ret.index) {
         case 0:
             return;
         case 1:
-            throw ret.value1;
+            throw ret.get<TestException>(1);
         }
     }
 
@@ -169,19 +142,14 @@ struct Stub<Echo>: Echo {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
-        RequestWriter<2> req(0, remote->id, 3);
         Writer<std::string> arg0(msg);
-        req.args[0] = &arg0;
         InterfaceWriter<EchoCallback> arg1(cb);
+        RequestWriter<2> req(0, remote->id, 3);
+        req.args[0] = &arg0;
         req.args[1] = &arg1;
         p->writer.push(&req);
 
-        struct _:ReturnReader<1> {
-            Reader<void> frame0;
-            _(): frame0() {
-                frames[0] = &frame0;
-            }
-        } ret;
+        ReturnReader<void> ret;
         p->addReturn(&ret);
         p->flushAndWait();
     }
@@ -194,24 +162,8 @@ struct Skeleton<Echo>: SkeletonBase {
 
     struct __req_echo: Request {
         Echo *object;
-
-        struct args_t: SequenceReader<1> {
-            std::string arg0;
-            Reader<std::string> frame0;
-            args_t(): frame0(arg0) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-            }
-        } args;
-
-        struct ret_t: ReturnWriter<1> {
-            std::string ret0;
-            Writer<std::string> frame0;
-            ret_t(): frame0(ret0) {
-                frames[0] = &frame0;
-            }
-        } ret;
-
+        ArgumentsReader<std::string> args;
+        ReturnWriter<std::string> ret;
         __req_echo(Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
@@ -219,7 +171,8 @@ struct Skeleton<Echo>: SkeletonBase {
 
         void call () {
             try {
-                ret.ret0 = object->echo(args.arg0);
+                ret.get<std::string>(0) =
+                        object->echo(args.get<std::string>(0));
                 ret.index = 0;
             } catch (...) {
                 ret.index = -1;
@@ -229,24 +182,8 @@ struct Skeleton<Echo>: SkeletonBase {
 
     struct __req_concat: Request {
         Echo *object;
-
-        struct args_t: SequenceReader<1> {
-            std::vector<std::string> arg0;
-            Reader<std::vector<std::string> > frame0;
-            args_t(): frame0(arg0) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-            }
-        } args;
-
-        struct ret_t: ReturnWriter<1> {
-            std::string ret0;
-            Writer<std::string> frame0;
-            ret_t(): frame0(ret0) {
-                frames[0] = &frame0;
-            }
-        } ret;
-
+        ArgumentsReader<std::vector<std::string> > args;
+        ReturnWriter<std::string> ret;
         __req_concat(Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
@@ -254,7 +191,8 @@ struct Skeleton<Echo>: SkeletonBase {
 
         void call () {
             try {
-                ret.ret0 = object->concat(args.arg0);
+                ret.get<std::string>(0) =
+                        object->concat(args.get<std::vector<std::string> >(0));
                 ret.index = 0;
             } catch (...) {
                 ret.index = -1;
@@ -264,17 +202,7 @@ struct Skeleton<Echo>: SkeletonBase {
 
     struct __req_touchmenot: Request {
         Echo *object;
-
-        struct ret_t: ReturnWriter<2> {
-            Writer<void> frame0;
-            TestException value1;
-            Writer<TestException> frame1;
-            ret_t(): frame0(), frame1(value1) {
-                frames[0] = &frame0;
-                frames[1] = &frame1;
-            }
-        } ret;
-
+        ReturnWriter<void,TestException> ret;
         __req_touchmenot(Echo *o): object(o) {
             argumentsReader = 0;
             returnWriter = &ret;
@@ -285,7 +213,7 @@ struct Skeleton<Echo>: SkeletonBase {
                 object->touchmenot();
                 ret.index = 0;
             } catch (TestException &e1) {
-                ret.value1 = e1;
+                ret.get<TestException>(1) = e1;
                 ret.index = 1;
             }
         }
@@ -293,34 +221,17 @@ struct Skeleton<Echo>: SkeletonBase {
 
     struct __req_recursiveEcho: Request {
         Echo *object;
-
-        struct args_t: SequenceReader<2> {
-            std::string arg0;
-            Reader<std::string> frame0;
-            base::Ref<EchoCallback> arg1;
-            InterfaceReader<EchoCallback> frame1;
-            args_t(): frame0(arg0), frame1(arg1) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-                values[1] = &arg1;
-                frames[1] = &frame1;
-            }
-        } args;
-
-        struct ret_t: ReturnWriter<1> {
-            Writer<void> frame0;
-            ret_t(): frame0() {
-                frames[0] = &frame0;
-            }
-        } ret;
-
+        ArgumentsReader<std::string,base::Ref<EchoCallback> > args;
+        ReturnWriter<void> ret;
         __req_recursiveEcho(Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
         }
 
         void call () {
-            object->recursiveEcho(args.arg0, args.arg1);
+            object->recursiveEcho(
+                    args.get<std::string>(0),
+                    args.get<base::Ref<EchoCallback> >(1));
             ret.index = 0;
         }
     };

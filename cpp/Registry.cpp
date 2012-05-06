@@ -11,24 +11,8 @@ struct RegistrySkeleton: SkeletonBase {
 
     struct __req_getRemote: Request {
         Registry *registry;
-
-        struct args_t: SequenceReader<1> {
-            string arg0;
-            Reader<string> frame0;
-            args_t(): frame0(arg0) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-            }
-        } args;
-
-        struct ret_t: ReturnWriter<1> {
-            int ret0;
-            Writer<int> frame0;
-            ret_t(): frame0(ret0) {
-                frames[0] = &frame0;
-            }
-        } ret;
-
+        ArgumentsReader<string> args;
+        ReturnWriter<int32_t> ret;
         __req_getRemote(Registry *reg): registry(reg) {
             argumentsReader = &args;
             returnWriter = &ret;
@@ -36,17 +20,17 @@ struct RegistrySkeleton: SkeletonBase {
 
         void call () {
             Log l("getRemote ");
-            l.debug("finding %s\n", args.arg0.c_str());
+            l.debug("finding %s\n", args.get<string>(0).c_str());
             map<string,InterfaceRef>::iterator i =
-                    registry->exportables.find(args.arg0);
+                    registry->exportables.find(args.get<string>(0));
             if (i == registry->exportables.end()) {
-                ret.ret0 = 0;
+                ret.get<int32_t>(0) = 0;
                 ret.index = 0;
                 l.debug("not found\n");
                 return;
             }
             SkeletonBase *skel = registry->getSkeleton(i->second.get());
-            ret.ret0 = skel->id;
+            ret.get<int32_t>(0) = skel->id;
             ret.index = 0;
             l.debug("found %08x(%d)\n", skel, skel->id);
         }
@@ -54,16 +38,7 @@ struct RegistrySkeleton: SkeletonBase {
 
     struct __req_notifyRemoteDestroy: Request {
         Registry *registry;
-
-        struct args_t: SequenceReader<1> {
-            int32_t arg0;
-            Reader<int32_t> frame0;
-            args_t(): frame0(arg0) {
-                values[0] = &arg0;
-                frames[0] = &frame0;
-            }
-        } args;
-
+        ArgumentsReader<int32_t> args;
         __req_notifyRemoteDestroy(Registry *reg): registry(reg) {
             argumentsReader = &args;
             returnWriter = 0;
@@ -71,7 +46,7 @@ struct RegistrySkeleton: SkeletonBase {
 
         void call () {
             Log l("notifyRemoteDestroy ");
-            int id = -args.arg0; // reverse local<->remote
+            int id = -args.get<int32_t>(0); // reverse local<->remote
             l.debug("deleting skeleton:%d\n", id);
 
             SkeletonBase *skel = registry->skeletons[id];
@@ -104,18 +79,10 @@ Remote *Registry::getRemote (string objname)
     req.args[0] = &arg0;
     p->writer.push(&req);
 
-    struct _:ReturnReader<1> {
-        int value0;
-        Reader<int> frame0;
-        _(): frame0(value0) {
-            values[0] = &value0;
-            frames[0] = &frame0;
-        }
-    } ret;
+    ReturnReader<int32_t> ret;
     p->addReturn(&ret);
-
     p->flushAndWait(); // may throw exception
-    return getRemote(-ret.value0); // reverse local<->remote
+    return getRemote(-ret.get<int32_t>(0)); // reverse local<->remote
 }
 
 void Registry::notifyRemoteDestroy (int id)

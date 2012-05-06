@@ -10,6 +10,7 @@
 #include <deque>
 #include "Ref.h"
 #include "Stack.h"
+#include "Tuple.h"
 #include "Log.h"
 
 namespace rop {
@@ -81,12 +82,16 @@ struct PortStack: base::Stack {
 /**
  * Default template class for Reader. (empty)
  */
-template <typename T> struct Reader {};
+template <typename T> struct Reader {
+    Reader (T &o) {}
+};
 
 /**
  * Default template class for Writer. (empty)
  */
-template <typename T> struct Writer {};
+template <typename T> struct Writer {
+    Writer (T &o) {}
+};
 
 // Utility macros for convenient management of step variable.
 // TRY_READ/TRY_WRITE should be used only for primitive types.
@@ -423,42 +428,6 @@ struct Writer<base::Ref<T> >: base::Frame {
     }
 };
 
-template <const int S>
-struct SequenceWriter: base::Frame {
-    base::Frame *frames[S];
-    SequenceWriter () {}
-
-    STATE run (base::Stack *stack) {
-        
-        if (step >= S) {
-            return COMPLETE;
-        }
-        stack->push(frames[step++]);
-        return CONTINUE;
-    }
-};
-
-template <const int S>
-struct SequenceReader: base::Frame {
-    void *values[S];
-    base::Frame *frames[S];
-    Log log;
-
-    SequenceReader (): log("seqread ") {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (step >= S) {
-            log.debug("exit. bufsize:%d\n", buf->size);
-            return COMPLETE;
-        }
-        log.debug("pushed %08x step:%d/%d bufsize:%d\n",
-                frames[step], step, S, buf->size);
-        stack->push(frames[step++]);
-        return CONTINUE;
-    }
-};
-
 template <typename T>
 struct Skeleton {};
 
@@ -722,21 +691,75 @@ struct Return: base::Frame {
     Return (): index(-1) {}
 };
 
+struct OwnFrame {
+    void *value;
+    base::Frame *frame;
+};
+template <typename T> struct OwnReader: OwnFrame {
+    T value;
+    Reader<T> reader;
+    OwnReader (): reader(value) {
+        OwnFrame::value = &value;
+        frame = &reader;
+    }
+};
+template <typename T> struct OwnWriter: OwnFrame {
+    T value;
+    Writer<T> writer;
+    OwnWriter (): writer(value) {
+        OwnFrame::value = &value;
+        frame = &writer;
+    }
+};
+template <> struct OwnReader<void>: OwnFrame {
+    Reader<void> reader;
+    OwnReader () {
+        OwnFrame::value = 0;
+        frame = &reader;
+    }
+};
+template <> struct OwnWriter<void>: OwnFrame {
+    Writer<void> writer;
+    OwnWriter () {
+        OwnFrame::value = 0;
+        frame = &writer;
+    }
+};
+
 /**
  * Return value holder which reads the value from stream.
  */
-template <const int S>
+template <
+    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
+    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
+    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
+    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
+    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
+    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
+    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
+    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
+    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
+    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
+    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
+    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
+    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+>
 struct ReturnReader: Return {
-    void *values[S];
-    base::Frame *frames[S];
+    base::TupleChain<OwnReader, OwnFrame, 0,
+            A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z> tuple;
+
+    template <typename AS>
+    AS &get (int i) {
+        return *reinterpret_cast<AS*>(tuple.items[i]->value);
+    }
 
     STATE run (base::Stack *stack) {
         BEGIN_STEP();
         TRY_READ(int32_t, index, stack);
 
         NEXT_STEP();
-        stack->push(frames[index]);
-        value = values[index];
+        stack->push(tuple.items[index]->frame);
+        value = tuple.items[index]->value;
         CALL();
 
         END_STEP();
@@ -746,25 +769,78 @@ struct ReturnReader: Return {
 /**
  * Return value holder which sends the value to stream.
  */
-template <const int S>
+template <
+    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
+    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
+    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
+    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
+    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
+    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
+    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
+    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
+    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
+    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
+    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
+    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
+    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+>
 struct ReturnWriter: Return {
-    base::Frame *frames[S];
-    int8_t messageHeader;
+    base::TupleChain<OwnWriter, OwnFrame, 0,
+            A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z> tuple;
 
-    ReturnWriter (): messageHeader(0x3<<6) {}
+    template <typename AS>
+    AS &get (int i) {
+        return *reinterpret_cast<AS*>(tuple.items[i]->value);
+    }
 
     STATE run (base::Stack *stack) {
         BEGIN_STEP();
-        TRY_WRITE(int8_t, messageHeader, stack);
+        {
+            int8_t messageHeader = 0x3<<6;
+            TRY_WRITE(int8_t, messageHeader, stack);
+        }
 
         NEXT_STEP();
         TRY_WRITE(int32_t, index, stack);
 
         NEXT_STEP();
-        stack->push(frames[index]);
+        stack->push(tuple.items[index]->frame);
         CALL();
 
         END_STEP();
+    }
+};
+
+template <
+    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
+    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
+    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
+    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
+    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
+    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
+    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
+    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
+    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
+    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
+    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
+    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
+    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+>
+struct ArgumentsReader: base::Frame {
+    base::TupleChain<OwnReader, OwnFrame, 0,
+            A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z> tuple;
+
+    template <typename AS>
+    AS &get (int i) {
+        return *reinterpret_cast<AS*>(tuple.items[i]->value);
+    }
+
+    STATE run (base::Stack *stack) {
+        if (step >= tuple.SIZE) {
+            return COMPLETE;
+        }
+        stack->push(tuple.items[step++]->frame);
+        return CONTINUE;
     }
 };
 
@@ -841,22 +917,30 @@ struct InterfaceWriter: base::Frame {
 };
 
 template <const int S>
-struct RequestWriter: SequenceWriter<S+3> {
-    int8_t messageHead;
-    int32_t objectId;
-    int16_t methodIndex;
-    Writer<int8_t> frame0;
-    Writer<int32_t> frame1;
-    Writer<int16_t> frame2;
+struct RequestWriter: base::Frame {
+    static const int SIZE = S+3;
+    base::Frame *frames[SIZE];
     base::Frame **args;
+    OwnWriter<int8_t> messageHead;
+    OwnWriter<int32_t> objectId;
+    OwnWriter<int16_t> methodIndex;
 
-    RequestWriter (int8_t h, int32_t o, int16_t m):
-            messageHead(h), objectId(o), methodIndex(m),
-            frame0(messageHead), frame1(objectId), frame2(methodIndex) {
-        this->frames[0] = &frame0;
-        this->frames[1] = &frame1;
-        this->frames[2] = &frame2;
+    RequestWriter (int8_t h, int32_t o, int16_t m) {
+        messageHead.value = h;
+        objectId.value = o;
+        methodIndex.value = m;
+        this->frames[0] = messageHead.frame;
+        this->frames[1] = objectId.frame;
+        this->frames[2] = methodIndex.frame;
         args = this->frames+3;
+    }
+
+    STATE run (base::Stack *stack) {
+        if (step >= SIZE) {
+            return COMPLETE;
+        }
+        stack->push(frames[step++]);
+        return CONTINUE;
     }
 };
 
