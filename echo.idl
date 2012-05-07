@@ -1,16 +1,16 @@
 package test {
-    struct Person {
-        String name;
-        i32 birth_year;
-    }
-
     exception TestException {
         i32 i;
+    }
+
+    interface EchoCallback {
+        async call (String msg);
     }
 
     interface Echo {
         String echo (String msg);
         String concat (List<String> msgs);
         void touchmenot () throws TestException;
+        void recursiveEcho (String msg, EchoCallback cb);
     }
 }

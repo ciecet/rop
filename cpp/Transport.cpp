@@ -192,15 +192,18 @@ void Port::flushAndWait ()
     
     l.debug("waiting for reply\n");
     pthread_mutex_lock(m);
-    while (!returns.empty()) {
-        if (requests.empty()) {
-            l.debug("calling waitPort in thread:%d\n", rpcThreadId);
-            transport->waitPort(this);
+    while (true) {
+        if (!requests.empty()) {
+            l.info("running reenterant request...\n");
+            handleRequest();
             continue;
         }
+        if (returns.empty()) {
+            break;
+        }
 
-        l.info("running reenterant request...\n");
-        handleRequest();
+        l.debug("calling waitPort in thread:%d\n", rpcThreadId);
+        transport->waitPort(this);
     }
     pthread_mutex_unlock(m);
     isWaiting = false;

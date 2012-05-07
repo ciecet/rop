@@ -13,6 +13,7 @@
 using namespace std;
 using namespace base;
 using namespace rop;
+using namespace test;
 
 struct EchoCallbackImpl: Exportable<EchoCallback> {
     void call (std::string msg) {

@@ -4,6 +4,8 @@
 #include "Log.h"
 #include "TestException.h"
 
+namespace test {
+
 struct EchoCallback: rop::Interface {
     virtual void call (std::string msg) = 0;
 };
@@ -11,27 +13,29 @@ struct EchoCallback: rop::Interface {
 struct Echo: rop::Interface {
     virtual std::string echo (std::string msg) = 0;
     virtual std::string concat (std::vector<std::string> msgs) = 0;
-    // may throws TestException
+    // may throws test::TestException
     virtual void touchmenot () = 0;
-    virtual void recursiveEcho (std::string msg, base::Ref<EchoCallback> cb) = 0;
+    virtual void recursiveEcho (std::string msg, base::Ref<test::EchoCallback> cb) = 0;
 };
+
+}
 
 namespace rop {
 
 template<>
-struct Reader<base::Ref<EchoCallback> >: InterfaceReader<EchoCallback> {
-    Reader (base::Ref<EchoCallback> &o): InterfaceReader<EchoCallback>(o) {}
+struct Reader<base::Ref<test::EchoCallback> >: InterfaceReader<test::EchoCallback> {
+    Reader (base::Ref<test::EchoCallback> &o): InterfaceReader<test::EchoCallback>(o) {}
 };
 
 template<>
-struct Writer<base::Ref<EchoCallback> >: InterfaceWriter<EchoCallback> {
-    Writer (base::Ref<EchoCallback> &o): InterfaceWriter<EchoCallback>(o) {}
+struct Writer<base::Ref<test::EchoCallback> >: InterfaceWriter<test::EchoCallback> {
+    Writer (base::Ref<test::EchoCallback> &o): InterfaceWriter<test::EchoCallback>(o) {}
 };
 
 template<>
-struct Stub<EchoCallback>: EchoCallback {
+struct Stub<test::EchoCallback>: test::EchoCallback {
     void call (std::string msg) {
-        Log l("echoCallback ");
+        Log l("test::EchoCallback ");
         
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
@@ -40,34 +44,29 @@ struct Stub<EchoCallback>: EchoCallback {
         RequestWriter<1> req(0, remote->id, 0);
         req.args[0] = &arg0;
         p->writer.push(&req);
-
-        ReturnReader<void> ret;
-        p->addReturn(&ret);
-        p->flushAndWait();
+        p->flush();
     }
 };
 
 template<>
-struct Skeleton<EchoCallback>: SkeletonBase {
+struct Skeleton<test::EchoCallback>: SkeletonBase {
 
     Skeleton (rop::Interface *o): SkeletonBase(o) {}
 
     struct __req_call: Request {
-        EchoCallback *object;
+        test::EchoCallback *object;
         ArgumentsReader<std::string> args;
-        ReturnWriter<void> ret;
-        __req_call(EchoCallback *o): object(o) {
+        __req_call(test::EchoCallback *o): object(o) {
             argumentsReader = &args;
-            returnWriter = &ret;
+            returnWriter = 0;
         }
         void call () {
             object->call(args.get<std::string>(0));
-            ret.index = 0;
         }
     };
 
     Request *createRequest (int mid) {
-        EchoCallback *o = reinterpret_cast<EchoCallback*>(object.get());
+        test::EchoCallback *o = reinterpret_cast<test::EchoCallback*>(object.get());
         switch (mid) {
         case 0: return new __req_call(o);
         default: return 0;
@@ -76,17 +75,17 @@ struct Skeleton<EchoCallback>: SkeletonBase {
 };
 
 template<>
-struct Reader<base::Ref<Echo> >: InterfaceReader<Echo> {
-    Reader (base::Ref<Echo> &o): InterfaceReader<Echo>(o) {}
+struct Reader<base::Ref<test::Echo> >: InterfaceReader<test::Echo> {
+    Reader (base::Ref<test::Echo> &o): InterfaceReader<test::Echo>(o) {}
 };
 
 template<>
-struct Writer<base::Ref<Echo> >: InterfaceWriter<Echo> {
-    Writer (base::Ref<Echo> &o): InterfaceWriter<Echo>(o) {}
+struct Writer<base::Ref<test::Echo> >: InterfaceWriter<test::Echo> {
+    Writer (base::Ref<test::Echo> &o): InterfaceWriter<test::Echo>(o) {}
 };
 
 template<>
-struct Stub<Echo>: Echo {
+struct Stub<test::Echo>: test::Echo {
 
     std::string echo (std::string msg) {
         Log l("stub ");
@@ -127,23 +126,23 @@ struct Stub<Echo>: Echo {
         RequestWriter<0> req(0, remote->id, 2);
         p->writer.push(&req);
 
-        ReturnReader<void,TestException> ret;
+        ReturnReader<void,test::TestException> ret;
         p->addReturn(&ret);
         p->flushAndWait();
         switch(ret.index) {
         case 0:
             return;
         case 1:
-            throw ret.get<TestException>(1);
+            throw ret.get<test::TestException>(1);
         }
     }
 
-    void recursiveEcho (std::string msg, base::Ref<EchoCallback> cb) {
+    void recursiveEcho (std::string msg, base::Ref<test::EchoCallback> cb) {
         Transport *trans = remote->registry->transport;
         Port *p = trans->getPort();
 
         Writer<std::string> arg0(msg);
-        InterfaceWriter<EchoCallback> arg1(cb);
+        InterfaceWriter<test::EchoCallback> arg1(cb);
         RequestWriter<2> req(0, remote->id, 3);
         req.args[0] = &arg0;
         req.args[1] = &arg1;
@@ -156,15 +155,15 @@ struct Stub<Echo>: Echo {
 };
 
 template<>
-struct Skeleton<Echo>: SkeletonBase {
+struct Skeleton<test::Echo>: SkeletonBase {
 
     Skeleton (rop::Interface *o): SkeletonBase(o) {}
 
     struct __req_echo: Request {
-        Echo *object;
+        test::Echo *object;
         ArgumentsReader<std::string> args;
         ReturnWriter<std::string> ret;
-        __req_echo(Echo *o): object(o) {
+        __req_echo(test::Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
         }
@@ -181,10 +180,10 @@ struct Skeleton<Echo>: SkeletonBase {
     };
 
     struct __req_concat: Request {
-        Echo *object;
+        test::Echo *object;
         ArgumentsReader<std::vector<std::string> > args;
         ReturnWriter<std::string> ret;
-        __req_concat(Echo *o): object(o) {
+        __req_concat(test::Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
         }
@@ -201,9 +200,9 @@ struct Skeleton<Echo>: SkeletonBase {
     };
 
     struct __req_touchmenot: Request {
-        Echo *object;
-        ReturnWriter<void,TestException> ret;
-        __req_touchmenot(Echo *o): object(o) {
+        test::Echo *object;
+        ReturnWriter<void,test::TestException> ret;
+        __req_touchmenot(test::Echo *o): object(o) {
             argumentsReader = 0;
             returnWriter = &ret;
         }
@@ -212,18 +211,18 @@ struct Skeleton<Echo>: SkeletonBase {
             try {
                 object->touchmenot();
                 ret.index = 0;
-            } catch (TestException &e1) {
-                ret.get<TestException>(1) = e1;
+            } catch (test::TestException &e1) {
+                ret.get<test::TestException>(1) = e1;
                 ret.index = 1;
             }
         }
     };
 
     struct __req_recursiveEcho: Request {
-        Echo *object;
-        ArgumentsReader<std::string,base::Ref<EchoCallback> > args;
+        test::Echo *object;
+        ArgumentsReader<std::string,base::Ref<test::EchoCallback> > args;
         ReturnWriter<void> ret;
-        __req_recursiveEcho(Echo *o): object(o) {
+        __req_recursiveEcho(test::Echo *o): object(o) {
             argumentsReader = &args;
             returnWriter = &ret;
         }
@@ -231,13 +230,13 @@ struct Skeleton<Echo>: SkeletonBase {
         void call () {
             object->recursiveEcho(
                     args.get<std::string>(0),
-                    args.get<base::Ref<EchoCallback> >(1));
+                    args.get<base::Ref<test::EchoCallback> >(1));
             ret.index = 0;
         }
     };
 
     Request *createRequest (int mid) {
-        Echo *o = reinterpret_cast<Echo*>(object.get());
+        test::Echo *o = reinterpret_cast<test::Echo*>(object.get());
         switch (mid) {
         case 0: return new __req_echo(o);
         case 1: return new __req_concat(o);
