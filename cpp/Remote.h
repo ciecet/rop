@@ -730,19 +730,19 @@ template <> struct OwnWriter<void>: OwnFrame {
  * Return value holder which reads the value from stream.
  */
 template <
-    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
-    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
-    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
-    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
-    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
-    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
-    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
-    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
-    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
-    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
-    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
-    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
-    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+    typename A = base::TupleEnd, typename B = base::TupleEnd,
+    typename C = base::TupleEnd, typename D = base::TupleEnd,
+    typename E = base::TupleEnd, typename F = base::TupleEnd,
+    typename G = base::TupleEnd, typename H = base::TupleEnd,
+    typename I = base::TupleEnd, typename J = base::TupleEnd,
+    typename K = base::TupleEnd, typename L = base::TupleEnd,
+    typename M = base::TupleEnd, typename N = base::TupleEnd,
+    typename O = base::TupleEnd, typename P = base::TupleEnd,
+    typename Q = base::TupleEnd, typename R = base::TupleEnd,
+    typename S = base::TupleEnd, typename T = base::TupleEnd,
+    typename U = base::TupleEnd, typename V = base::TupleEnd,
+    typename W = base::TupleEnd, typename X = base::TupleEnd,
+    typename Y = base::TupleEnd, typename Z = base::TupleEnd
 >
 struct ReturnReader: Return {
     base::TupleChain<OwnReader, OwnFrame, 0,
@@ -770,19 +770,19 @@ struct ReturnReader: Return {
  * Return value holder which sends the value to stream.
  */
 template <
-    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
-    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
-    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
-    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
-    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
-    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
-    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
-    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
-    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
-    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
-    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
-    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
-    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+    typename A = base::TupleEnd, typename B = base::TupleEnd,
+    typename C = base::TupleEnd, typename D = base::TupleEnd,
+    typename E = base::TupleEnd, typename F = base::TupleEnd,
+    typename G = base::TupleEnd, typename H = base::TupleEnd,
+    typename I = base::TupleEnd, typename J = base::TupleEnd,
+    typename K = base::TupleEnd, typename L = base::TupleEnd,
+    typename M = base::TupleEnd, typename N = base::TupleEnd,
+    typename O = base::TupleEnd, typename P = base::TupleEnd,
+    typename Q = base::TupleEnd, typename R = base::TupleEnd,
+    typename S = base::TupleEnd, typename T = base::TupleEnd,
+    typename U = base::TupleEnd, typename V = base::TupleEnd,
+    typename W = base::TupleEnd, typename X = base::TupleEnd,
+    typename Y = base::TupleEnd, typename Z = base::TupleEnd
 >
 struct ReturnWriter: Return {
     base::TupleChain<OwnWriter, OwnFrame, 0,
@@ -812,19 +812,19 @@ struct ReturnWriter: Return {
 };
 
 template <
-    typename A = base::TupleTerminator, typename B = base::TupleTerminator,
-    typename C = base::TupleTerminator, typename D = base::TupleTerminator,
-    typename E = base::TupleTerminator, typename F = base::TupleTerminator,
-    typename G = base::TupleTerminator, typename H = base::TupleTerminator,
-    typename I = base::TupleTerminator, typename J = base::TupleTerminator,
-    typename K = base::TupleTerminator, typename L = base::TupleTerminator,
-    typename M = base::TupleTerminator, typename N = base::TupleTerminator,
-    typename O = base::TupleTerminator, typename P = base::TupleTerminator,
-    typename Q = base::TupleTerminator, typename R = base::TupleTerminator,
-    typename S = base::TupleTerminator, typename T = base::TupleTerminator,
-    typename U = base::TupleTerminator, typename V = base::TupleTerminator,
-    typename W = base::TupleTerminator, typename X = base::TupleTerminator,
-    typename Y = base::TupleTerminator, typename Z = base::TupleTerminator
+    typename A = base::TupleEnd, typename B = base::TupleEnd,
+    typename C = base::TupleEnd, typename D = base::TupleEnd,
+    typename E = base::TupleEnd, typename F = base::TupleEnd,
+    typename G = base::TupleEnd, typename H = base::TupleEnd,
+    typename I = base::TupleEnd, typename J = base::TupleEnd,
+    typename K = base::TupleEnd, typename L = base::TupleEnd,
+    typename M = base::TupleEnd, typename N = base::TupleEnd,
+    typename O = base::TupleEnd, typename P = base::TupleEnd,
+    typename Q = base::TupleEnd, typename R = base::TupleEnd,
+    typename S = base::TupleEnd, typename T = base::TupleEnd,
+    typename U = base::TupleEnd, typename V = base::TupleEnd,
+    typename W = base::TupleEnd, typename X = base::TupleEnd,
+    typename Y = base::TupleEnd, typename Z = base::TupleEnd
 >
 struct ArgumentsReader: base::Frame {
     base::TupleChain<OwnReader, OwnFrame, 0,

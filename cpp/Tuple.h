@@ -3,28 +3,24 @@
 
 namespace base {
 
-struct TupleTerminator {};
+struct TupleEnd {};
 
 template <
     template <typename> class ItemType,
     typename ItemBaseType,
     int INDEX,
-    typename A = TupleTerminator, typename B = TupleTerminator,
-    typename C = TupleTerminator, typename D = TupleTerminator,
-    typename E = TupleTerminator, typename F = TupleTerminator,
-    typename G = TupleTerminator, typename H = TupleTerminator,
-    typename I = TupleTerminator, typename J = TupleTerminator,
-    typename K = TupleTerminator, typename L = TupleTerminator,
-    typename M = TupleTerminator, typename N = TupleTerminator,
-    typename O = TupleTerminator, typename P = TupleTerminator,
-    typename Q = TupleTerminator, typename R = TupleTerminator,
-    typename S = TupleTerminator, typename T = TupleTerminator,
-    typename U = TupleTerminator, typename V = TupleTerminator,
-    typename W = TupleTerminator, typename X = TupleTerminator,
-    typename Y = TupleTerminator, typename Z = TupleTerminator
+    typename A = TupleEnd, typename B = TupleEnd, typename C = TupleEnd,
+    typename D = TupleEnd, typename E = TupleEnd, typename F = TupleEnd,
+    typename G = TupleEnd, typename H = TupleEnd, typename I = TupleEnd,
+    typename J = TupleEnd, typename K = TupleEnd, typename L = TupleEnd,
+    typename M = TupleEnd, typename N = TupleEnd, typename O = TupleEnd,
+    typename P = TupleEnd, typename Q = TupleEnd, typename R = TupleEnd,
+    typename S = TupleEnd, typename T = TupleEnd, typename U = TupleEnd,
+    typename V = TupleEnd, typename W = TupleEnd, typename X = TupleEnd,
+    typename Y = TupleEnd, typename Z = TupleEnd
 >
 struct TupleChain: TupleChain<ItemType, ItemBaseType, INDEX+1,
-        B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,TupleTerminator> {
+        B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z,TupleEnd> {
     ItemType<A> item;
     TupleChain() {
         TupleChain::items[INDEX] = &item;
@@ -32,7 +28,7 @@ struct TupleChain: TupleChain<ItemType, ItemBaseType, INDEX+1,
 };
 
 template <template <typename> class ItemType, typename B, int S>
-struct TupleChain<ItemType, B, S, TupleTerminator> {
+struct TupleChain<ItemType, B, S, TupleEnd> {
     static const int SIZE = S;
     B *items[SIZE];
 };
@@ -40,19 +36,15 @@ struct TupleChain<ItemType, B, S, TupleTerminator> {
 template <typename T>
 struct TrivialTupleItem { T value; };
 template <
-    typename A = TupleTerminator, typename B = TupleTerminator,
-    typename C = TupleTerminator, typename D = TupleTerminator,
-    typename E = TupleTerminator, typename F = TupleTerminator,
-    typename G = TupleTerminator, typename H = TupleTerminator,
-    typename I = TupleTerminator, typename J = TupleTerminator,
-    typename K = TupleTerminator, typename L = TupleTerminator,
-    typename M = TupleTerminator, typename N = TupleTerminator,
-    typename O = TupleTerminator, typename P = TupleTerminator,
-    typename Q = TupleTerminator, typename R = TupleTerminator,
-    typename S = TupleTerminator, typename T = TupleTerminator,
-    typename U = TupleTerminator, typename V = TupleTerminator,
-    typename W = TupleTerminator, typename X = TupleTerminator,
-    typename Y = TupleTerminator, typename Z = TupleTerminator
+    typename A = TupleEnd, typename B = TupleEnd, typename C = TupleEnd,
+    typename D = TupleEnd, typename E = TupleEnd, typename F = TupleEnd,
+    typename G = TupleEnd, typename H = TupleEnd, typename I = TupleEnd,
+    typename J = TupleEnd, typename K = TupleEnd, typename L = TupleEnd,
+    typename M = TupleEnd, typename N = TupleEnd, typename O = TupleEnd,
+    typename P = TupleEnd, typename Q = TupleEnd, typename R = TupleEnd,
+    typename S = TupleEnd, typename T = TupleEnd, typename U = TupleEnd,
+    typename V = TupleEnd, typename W = TupleEnd, typename X = TupleEnd,
+    typename Y = TupleEnd, typename Z = TupleEnd
 >
 struct Tuple: TupleChain<TrivialTupleItem, void, 0, 
         A, B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z> {
