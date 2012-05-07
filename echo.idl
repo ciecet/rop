@@ -1,4 +1,5 @@
 package test {
+
     exception TestException {
         i32 i;
     }

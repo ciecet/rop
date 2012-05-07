@@ -1,10 +1,9 @@
 #ifndef TESTEXCEPTION_H
 #define TESTEXCEPTION_H
-#include <exception>
 #include "Remote.h"
 
 namespace test {
-struct TestException: std::exception {
+struct TestException: rop::RemoteException {
     int32_t i;
     TestException () {}
     TestException (const int32_t &arg0): i(arg0) {}

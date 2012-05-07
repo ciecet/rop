@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <exception>
 #include <new>
 #include <map>
 #include <vector>
@@ -14,6 +15,9 @@
 #include "Log.h"
 
 namespace rop {
+
+class RemoteException: public std::exception {
+};
 
 /**
  * Byte queue buffer with fixed size.
