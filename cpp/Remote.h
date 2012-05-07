@@ -421,12 +421,59 @@ struct Writer<base::Ref<T> >: base::Frame {
     Writer (base::Ref<T> &o): obj(o) {}
 
     STATE run (base::Stack *stack) {
+        int8_t i;
         BEGIN_STEP();
         if (obj) {
+            i = 1;
+            TRY_WRITE(int8_t, i, stack);
             stack->push(new (stack->allocate(sizeof(Writer<T>))) Writer<T>(*obj));
             CALL();
         } else {
-            int i = 0;
+            i = 0;
+            TRY_WRITE(int8_t, i, stack);
+        }
+
+        END_STEP();
+    }
+};
+
+template <typename T>
+struct Reader<base::ContainerRef<T> >: base::Frame {
+    base::ContainerRef<T> &obj;
+    Reader (base::ContainerRef<T> &o): obj(o) {}
+    STATE run (base::Stack *stack) {
+        Log l("readcontref ");
+        int8_t i;
+        BEGIN_STEP();
+        TRY_READ(int8_t, i, stack);
+        l.debug("i:%d\n", i);
+        if (i) {
+            obj = new base::Container<T>();
+            stack->push(new (stack->allocate(sizeof(Reader<T>))) Reader<T>(*obj));
+            CALL();
+        } else {
+            obj = 0;
+        }
+        END_STEP();
+    }
+};
+
+template <typename T>
+struct Writer<base::ContainerRef<T> >: base::Frame {
+    base::ContainerRef<T> &obj;
+    Writer (base::ContainerRef<T> &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        int8_t i;
+        Log l("writecontref ");
+        BEGIN_STEP();
+        if (obj) {
+            i = 1;
+            TRY_WRITE(int8_t, i, stack);
+            stack->push(new (stack->allocate(sizeof(Writer<T>))) Writer<T>(*obj));
+            CALL();
+        } else {
+            i = 0;
             TRY_WRITE(int8_t, i, stack);
         }
 
@@ -662,7 +709,9 @@ struct Remote: base::RefCounted<Remote> {
     int id; // negative
     Registry *registry;
     ~Remote () {
-        registry->notifyRemoteDestroy(id);
+        if (registry) {
+            registry->notifyRemoteDestroy(id);
+        }
     }
 };
 

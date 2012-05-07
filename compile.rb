@@ -246,13 +246,20 @@ class TypeNode
     end
 
     def cname
-        return "base::Ref<#{to_cpp}> " if package.interfaces.has_key?(name)
+        isIntf = package.interfaces.has_key?(name)
+        return "base::Ref<#{to_cpp}> " if isIntf
 
         case name
         when "Map"
             "#{to_cpp}<#{subTypes[0].cname}, #{subTypes[1].cname}> "
-        when "List", "Nullable"
+        when "List"
             "#{to_cpp}<#{subTypes[0].cname}> "
+        when "Nullable"
+            if isIntf
+                "#{to_cpp}<#{subTypes[0].cname}> "
+            else
+                "base::ContainerRef<#{subTypes[0].cname}> "
+            end
         else
             to_cpp
         end
@@ -284,6 +291,7 @@ packages.each { |pkg|
                         "const #{exp.fieldTypes[i].cname} &arg#{i}"}.join(", ")}): #{
                     (0...exp.fieldTypes.size).map{|i|
                         "#{exp.fieldTypes[i].variable}(arg#{i})"}.join(", ")} {}"
+            f.puts "    ~#{name} () throw() {}"
             f.puts "};"
             f.puts "}"
             f.puts

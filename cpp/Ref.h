@@ -91,8 +91,16 @@ class ContainerRef {
     Container<T> *object;
 public:
     ContainerRef (): object(0) {}
-    ContainerRef (Container<T> *o): object(o) { object->ref(); }
-    ContainerRef (const ContainerRef<T> &r): object(r.object) { object->ref(); }
+    ContainerRef (Container<T> *o): object(o) {
+        if (o) {
+            object->ref();
+        }
+    }
+    ContainerRef (const ContainerRef<T> &r): object(r.object) {
+        if (object) {
+            object->ref();
+        }
+    }
     ~ContainerRef () {
         if (object) {
             object->deref();
@@ -102,7 +110,11 @@ public:
         return object->value;
     }
     T *operator-> () {
-        return &object->value;
+        if (object) {
+            return &object->value;
+        } else {
+            return 0;
+        }
     }
     T *get () {
         if (object) {
@@ -111,7 +123,7 @@ public:
             return 0;
         }
     }
-    Ref<T> &operator=(T *o) {
+    ContainerRef<T> &operator=(Container<T> *o) {
         if (object) {
             object->deref();
         }
@@ -120,7 +132,7 @@ public:
             object->ref();
         }
     }
-    Ref<T> &operator=(Ref<T> &r) {
+    ContainerRef<T> &operator=(ContainerRef<T> &r) {
         if (object) {
             object->deref();
         }
@@ -128,10 +140,10 @@ public:
         object->ref();
     }
     operator void*() { return object; }
-    bool operator==(const Ref<T>& r) {
+    bool operator==(const ContainerRef<T>& r) {
         return object == r.object;
     }
-    bool operator!=(const Ref<T>& r) {
+    bool operator!=(const ContainerRef<T>& r) {
         return object != r.object;
     }
 };

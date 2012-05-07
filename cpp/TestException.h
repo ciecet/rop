@@ -4,9 +4,10 @@
 
 namespace test {
 struct TestException: rop::RemoteException {
-    int32_t i;
+    base::ContainerRef<int32_t>  i;
     TestException () {}
-    TestException (const int32_t &arg0): i(arg0) {}
+    TestException (const base::ContainerRef<int32_t>  &arg0): i(arg0) {}
+    ~TestException () throw() {}
 };
 }
 
@@ -17,7 +18,7 @@ struct Reader <test::TestException>: base::Frame {
     Reader (test::TestException &o): object(o) {}
     STATE run (base::Stack *stack) {
         switch (step) {
-        case 0: stack->push(new(stack->allocate(sizeof(Reader<int32_t>))) Reader<int32_t>(object.i)); step++; return CONTINUE;
+        case 0: stack->push(new(stack->allocate(sizeof(Reader<base::ContainerRef<int32_t> >))) Reader<base::ContainerRef<int32_t> >(object.i)); step++; return CONTINUE;
         default: return COMPLETE;
         }
     }
@@ -28,7 +29,7 @@ struct Writer <test::TestException>: base::Frame {
     Writer (test::TestException &o): object(o) {}
     STATE run (base::Stack *stack) {
         switch (step) {
-        case 0: stack->push(new(stack->allocate(sizeof(Writer<int32_t>))) Writer<int32_t>(object.i)); step++; return CONTINUE;
+        case 0: stack->push(new(stack->allocate(sizeof(Writer<base::ContainerRef<int32_t> >))) Writer<base::ContainerRef<int32_t> >(object.i)); step++; return CONTINUE;
         default: return COMPLETE;
         }
     }

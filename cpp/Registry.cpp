@@ -87,6 +87,8 @@ Remote *Registry::getRemote (string objname)
 
 void Registry::notifyRemoteDestroy (int id)
 {
+    remotes.erase(id);
+
     Port *p = transport->getPort(0);
 
     RequestWriter<1> req(0x1<<6, 0, 1);
@@ -130,6 +132,8 @@ SkeletonBase *Registry::getSkeleton (Interface *obj)
 Registry::~Registry ()
 {
     Log l("~reg ");
+    // Don't send notifyRemoteDestroy because peer's skeletons will be deleted
+    // anyway after connection-loss detection.
     for (map<int,Remote*>::iterator i = remotes.begin();
             i != remotes.end(); i++) {
         i->second->registry = 0;

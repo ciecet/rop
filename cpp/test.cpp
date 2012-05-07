@@ -47,7 +47,9 @@ string EchoImpl::concat (vector<string> msgs)
 void EchoImpl::touchmenot ()
 {
     printf("THROW 3!\n");
-    throw TestException(3);
+    ContainerRef<int> i = new Container<int>();
+    *i = 3;
+    throw TestException(i);
 }
 
 void EchoImpl::recursiveEcho (string msg, Ref<EchoCallback> cb)
@@ -63,13 +65,13 @@ void test1 ()
     pipe2(p1, O_NONBLOCK);
 
     if (fork()) {
+        Stub<Echo> e;
         Log l("client ");
         // client
         Registry reg;
         SocketTransport trans(reg, p0[0], p1[1]);
 
         l.info("getting remote Echo...\n");
-        Stub<Echo> e;
         e.remote = reg.getRemote("Echo");
 
         l.info("using Echo...\n");
@@ -84,7 +86,7 @@ void test1 ()
             e.touchmenot();
             printf("Silently returned.\n");
         } catch (TestException &e) {
-            printf("Got exception :%d\n", e.i);
+            printf("Got exception :%d\n", *e.i);
         }
         e.recursiveEcho("rrrrrrrrrrrrrrrrrrrrrrrrrrr", new EchoCallbackImpl());
     } else {
@@ -97,7 +99,7 @@ void test1 ()
         trans.loop();
     }
 
-    sleep(5);
+    sleep(1);
 }
 
 int main ()
