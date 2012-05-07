@@ -1,48 +1,38 @@
-#ifndef TEST_EXCEPTION_H
-#define TEST_EXCEPTION_H
-
+#ifndef TESTEXCEPTION_H
+#define TESTEXCEPTION_H
 #include <exception>
 #include "Remote.h"
-#include "Stack.h"
 
 namespace test {
-
 struct TestException: std::exception {
     int32_t i;
-    TestException(): i(0) {}
-    TestException(int32_t v): i(v) {}
+    TestException () {}
+    TestException (const int32_t &arg0): i(arg0) {}
 };
-
 }
 
 namespace rop {
-
-template<> struct Reader<test::TestException>: base::Frame {
-    test::TestException &obj;
-    Reader (test::TestException &o): obj(o) {}
+template<>
+struct Reader <test::TestException>: base::Frame {
+    test::TestException &object;
+    Reader (test::TestException &o): object(o) {}
     STATE run (base::Stack *stack) {
-        BEGIN_STEP();
-        stack->push(new(stack->allocate(sizeof(Reader<int32_t>)))
-                Reader<int32_t>(obj.i));
-        CALL();
-
-        END_STEP();
+        switch (step) {
+        case 0: stack->push(new(stack->allocate(sizeof(Reader<int32_t>))) Reader<int32_t>(object.i)); step++; return CONTINUE;
+        default: return COMPLETE;
+        }
     }
 };
-
-template<> struct Writer<test::TestException>: base::Frame {
-    test::TestException &obj;
-    Writer (test::TestException &o): obj(o) {}
+template<>
+struct Writer <test::TestException>: base::Frame {
+    test::TestException &object;
+    Writer (test::TestException &o): object(o) {}
     STATE run (base::Stack *stack) {
-        BEGIN_STEP();
-        stack->push(new (stack->allocate(sizeof(Writer<int32_t>)))
-                Writer<int32_t>(obj.i));
-        CALL();
-
-        END_STEP();
+        switch (step) {
+        case 0: stack->push(new(stack->allocate(sizeof(Writer<int32_t>))) Writer<int32_t>(object.i)); step++; return CONTINUE;
+        default: return COMPLETE;
+        }
     }
 };
-
 }
-
 #endif

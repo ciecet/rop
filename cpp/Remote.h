@@ -332,19 +332,19 @@ template<typename T, typename U> struct Reader<std::map<T,U> >: base::Frame {
         BEGIN_STEP();
         // read size
         TRY_READ(int32_t, n, stack);
-        obj->clear();
+        obj.clear();
         n *= 2;
 
         NEXT_STEP();
         if (n) {
             if ((n & 1) == 0) {
                 // read key
-                stack->push(new(sizeof(Reader<T>)) Reader<T>(key));
+                stack->push(new(stack->allocate(sizeof(Reader<T>))) Reader<T>(key));
                 n--;
                 return CONTINUE;
             } else {
                 // read value
-                stack->push(new (sizeof(Reader<U>)) Reader<U>(obj[key]));
+                stack->push(new(stack->allocate(sizeof(Reader<U>))) Reader<U>(obj[key]));
                 n--;
                 return CONTINUE;
             }
@@ -365,17 +365,19 @@ template<typename T, typename U> struct Writer<std::map<T,U> >: base::Frame {
 
         // write size
         BEGIN_STEP();
-        int size = obj->size();
-        TRY_WRITE(int32_t, size, stack);
-        iter = obj->begin();
+        {
+            int size = obj.size();
+            TRY_WRITE(int32_t, size, stack);
+        }
+        iter = obj.begin();
         first = true;
 
         // write key and value
         NEXT_STEP();
-        if (iter != obj->end()) {
+        if (iter != obj.end()) {
             if (first) {
                 stack->push(new(stack->allocate(sizeof(Writer<T>))) Writer<T>(
-                        const_cast<T*>(&iter->first)));
+                        const_cast<T&>(iter->first)));
                 first = false;
                 return CONTINUE;
             } else {
