@@ -28,15 +28,15 @@ struct SocketTransport: Transport {
 
     void loop (); // handle reading
     
-    void unsafeRead ();
+    void tryRead ();
     void waitReadable ();
     void waitWritable ();
 
 ////////////////////////////////////////////////////////////////////////////////
 //  implements transport
 
-    void flushPort (Port *p);
-    void waitPort (Port *p);
+    void send (Port *p);
+    void receive (Port *p);
     void notifyUnhandledRequest (Port *p) {} // already checked by loop()
 };
 

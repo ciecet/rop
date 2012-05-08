@@ -36,22 +36,24 @@ void SocketTransport::loop ()
         pthread_mutex_lock(&monitor);
         if (FD_ISSET(inFd, &infdset)) {
             l.info("got message.\n");
-            unsafeRead();
+            tryRead();
         }
 
         // execute processors
-        for (map<int,Port*>::iterator i = ports.begin();
-                i != ports.end(); i++) {
-            if (!i->second->requests.empty()) {
+        for (map<int,Port*>::iterator i = ports.begin(); i != ports.end();) {
+            Port *p = i->second;
+            if (!p->requests.empty()) {
                 l.info("executing request...\n");
             }
-            while (i->second->processRequest());
+            while (p->processRequest());
+            i++;
+            releasePortWithLock(p);
         }
         pthread_mutex_unlock(&monitor);
     }
 }
 
-void SocketTransport::unsafeRead ()
+void SocketTransport::tryRead ()
 {
     Log l("read ");
 
@@ -73,10 +75,13 @@ void SocketTransport::unsafeRead ()
             // eof
             break;
         } if (r < 0) {
-            // fail (or eblock)
+            // fail or EWOULDBLOCK
             break;
         }
         inBuffer.size += r;
+        l.debug("read %d bytes.\n", r);
+
+begin_message:
 
         // on start of message frame...
         if (inPort == 0) {
@@ -88,20 +93,21 @@ void SocketTransport::unsafeRead ()
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
-            inPort = getPort(-p); // reverse local<->remote port id
+            inPort = getPortWithLock(-p); // reverse local<->remote port id
             l.debug("getting port:%d\n", -p);
         }
 
-        switch (inPort->read(&inBuffer)) {
+        switch (inPort->decode(&inBuffer)) {
         case Frame::COMPLETE:
             inPort = 0;
-            break;
+            goto begin_message;
         case Frame::STOPPED:
-            break;
-        default:
+            break; // continue reading
         case Frame::ABORTED:
-            // TODO: handle it
+        default: // not expected.
+            // handle it? could be handled in upper layer.
             l.error("Unexpected IO exception.\n");
+            return;
         }
     }
 }
@@ -135,7 +141,10 @@ void SocketTransport::waitWritable ()
         FD_SET(inFd, &expfdset);
     }
 
-    if (pselect(nfds, &infdset, &outfdset, &expfdset, 0, 0) <= 0) {
+    pthread_mutex_unlock(&monitor);
+    int ret = pselect(nfds, &infdset, &outfdset, &expfdset, 0, 0);
+    pthread_mutex_lock(&monitor);
+    if (ret <= 0) {
         return;
     }
 
@@ -144,22 +153,18 @@ void SocketTransport::waitWritable ()
     }
 
     if (FD_ISSET(inFd, &infdset)) {
-        pthread_mutex_lock(&monitor);
-        unsafeRead();
-        pthread_mutex_unlock(&monitor);
+        tryRead();
     }
 }
 
-void SocketTransport::flushPort (Port *p)
+void SocketTransport::send (Port *p)
 {
     Log l("flush ");
-    pthread_mutex_lock(&monitor);
     while (isSending) {
         l.trace("waiting for lock...\n");
         pthread_cond_wait(&writableCondition, &monitor);
     }
     isSending = true;
-    pthread_mutex_unlock(&monitor);
 
     l.debug("sending port:%d...\n", p->id);
     outBuffer.write(p->id >> 24);
@@ -172,7 +177,7 @@ void SocketTransport::flushPort (Port *p)
         // fill in buffer
         if (p->writer.frame) {
             l.info("... write to buffer\n");
-            if (p->write(&outBuffer) == Frame::ABORTED) {
+            if (p->encode(&outBuffer) == Frame::ABORTED) {
                 // TODO: handle abortion.
                 l.error("ABORTED..?\n");
             }
@@ -210,10 +215,8 @@ void SocketTransport::flushPort (Port *p)
         waitWritable();
     }
 
-    pthread_mutex_lock(&monitor);
     isSending = false;
     pthread_cond_signal(&writableCondition);
-    pthread_mutex_unlock(&monitor);
 }
 
 void SocketTransport::waitReadable ()
@@ -226,25 +229,22 @@ void SocketTransport::waitReadable ()
     FD_SET(inFd, &infdset);
     FD_SET(inFd, &expfdset);
 
-    if (pselect(inFd+1, &infdset, 0, &expfdset, 0, 0) <= 0) {
-        return;
-    }
+    pthread_mutex_unlock(&monitor);
+    pselect(inFd+1, &infdset, 0, &expfdset, 0, 0); // care return value?
+    pthread_mutex_lock(&monitor);
 }
 
-void SocketTransport::waitPort (Port *p)
+void SocketTransport::receive (Port *p)
 {
     Log l("waitport ");
     if (isLooping) {
-        pthread_t self = pthread_self();
-        if (!pthread_equal(self, loopThread)) {
+        if (!pthread_equal(pthread_self(), loopThread)) {
             l.debug("waiting on condvar for port:%d\n", p->id);
             pthread_cond_wait(&p->wakeCondition, &monitor);
             return;
         }
     }
 
-    pthread_mutex_unlock(&monitor);
     waitReadable();
-    pthread_mutex_lock(&monitor);
-    unsafeRead();
+    tryRead();
 }

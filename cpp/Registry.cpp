@@ -80,8 +80,7 @@ Remote *Registry::getRemote (string objname)
     p->writer.push(&req);
 
     ReturnReader<int32_t> ret;
-    p->addReturn(&ret);
-    p->flushAndWait(); // may throw exception
+    p->sendAndWait(&ret); // may throw exception
     return getRemote(-ret.get<int32_t>(0)); // reverse local<->remote
 }
 
@@ -95,7 +94,7 @@ void Registry::notifyRemoteDestroy (int id)
     Writer<int32_t> arg0(id);
     req.args[0] = &arg0;
     p->writer.push(&req);
-    p->flush();
+    p->send(0);
 }
 
 Remote *Registry::getRemote (int id)

@@ -32,8 +32,7 @@ struct Stub<test::Echo>: test::Echo {
         p->writer.push(&req);
 
         ReturnReader<std::string> ret;
-        p->addReturn(&ret);
-        p->flushAndWait();
+        p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return ret.get<std::string>(0);
         default: throw rop::RemoteException();
@@ -49,8 +48,7 @@ struct Stub<test::Echo>: test::Echo {
         p->writer.push(&req);
 
         ReturnReader<std::string> ret;
-        p->addReturn(&ret);
-        p->flushAndWait();
+        p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return ret.get<std::string>(0);
         default: throw rop::RemoteException();
@@ -64,8 +62,7 @@ struct Stub<test::Echo>: test::Echo {
         p->writer.push(&req);
 
         ReturnReader<void, test::TestException> ret;
-        p->addReturn(&ret);
-        p->flushAndWait();
+        p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return;
         case 1: throw ret.get<test::TestException>(1);
@@ -84,8 +81,7 @@ struct Stub<test::Echo>: test::Echo {
         p->writer.push(&req);
 
         ReturnReader<void> ret;
-        p->addReturn(&ret);
-        p->flushAndWait();
+        p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return;
         default: throw rop::RemoteException();

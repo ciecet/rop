@@ -25,7 +25,7 @@ struct Stub<test::EchoCallback>: test::EchoCallback {
         RequestWriter<1> req(1<<6, remote->id, 0);
         req.args[0] = &__arg_msg;
         p->writer.push(&req);
-        p->flush();
+        p->send(0);
     }
 };
 template<>

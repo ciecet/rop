@@ -52,6 +52,12 @@ Port *Transport::getPort ()
 
 Port *Transport::getPort (int pid)
 {
+    pthread_mutex_lock(&monitor);
+    return getPortWithLock(pid);
+}
+
+Port *Transport::getPortWithLock (int pid)
+{
     Port *&p = ports[pid];
     if (!p) {
         if (freePorts.empty()) {
@@ -65,6 +71,20 @@ Port *Transport::getPort (int pid)
     return p;
 }
 
+void Transport::releasePort (Port *p)
+{
+    releasePortWithLock(p);
+    pthread_mutex_unlock(&monitor);
+}
+
+void Transport::releasePortWithLock (Port *p)
+{
+    if (p->isActive()) {
+        return;
+    }
+    //ports.erase(p->id);
+    //freePorts.push_back(p);
+}
 
 // switch (MSB of messageHead)
 // 00: sync call (reenterant)
@@ -99,16 +119,15 @@ struct MessageReader: Frame {
             // getting return message
             ret = port->returns.front();
             if (!ret) {
-                // fail
+                // no waiting return!
                 return ABORTED;
             }
             stack->push(ret);
             CALL();
-            // TODO: notify that return value is available.
+            ret->isValid = true;
+            // TODO: notify that return value is available. (for future)
             port->returns.pop_front();
-            if (port->returns.empty()) {
-                pthread_cond_signal(&port->wakeCondition);
-            }
+            pthread_cond_signal(&port->wakeCondition);
         } else {
             log.debug("Getting request...\n");
             // getting request message
@@ -147,7 +166,7 @@ struct MessageReader: Frame {
             port->requests.push_back(request);
             request = 0;
 
-            if (port->isWaiting) {
+            if (port->canProcessRequests) {
                 log.debug("wake up waiting thread to execute the request.\n");
                 pthread_cond_signal(&port->wakeCondition);
             } else {
@@ -155,16 +174,16 @@ struct MessageReader: Frame {
                 port->transport->notifyUnhandledRequest(port);
             }
         }
-
-        // keep reading if buffer is not empty. (optional)
-        if (static_cast<PortStack*>(stack)->buffer->size) {
-            step = 0;
-        }
         END_STEP();
     }
 };
 
-Frame::STATE Port::read (Buffer *buf) {
+Frame::STATE Port::encode (Buffer *buf) {
+    writer.buffer = buf;
+    return writer.run();
+}
+
+Frame::STATE Port::decode (Buffer *buf) {
     if (!reader.frame) {
         reader.push(new(reader.allocate(sizeof(MessageReader))) MessageReader(this));
     }
@@ -173,45 +192,41 @@ Frame::STATE Port::read (Buffer *buf) {
     return reader.run();
 }
 
-Frame::STATE Port::write (Buffer *buf) {
-    writer.buffer = buf;
-    return writer.run();
-}
-
-void Port::flush ()
+void Port::send (Return *ret)
 {
-    transport->flushPort(this);
+    if (ret) {
+        returns.push_back(ret);
+    }
+    transport->send(this);
+    transport->releasePort(this);
 }
 
-void Port::addReturn (Return *ret) {
-    returns.push_back(ret);
-}
-
-void Port::flushAndWait ()
+void Port::sendAndWait (Return *ret)
 {
     Log l("f&w ");
-    pthread_mutex_t *m = &transport->monitor;
     
-    isWaiting = true;
-    transport->flushPort(this);
+    canProcessRequests = true;
+    returns.push_back(ret);
+
+    transport->send(this);
     
     l.debug("waiting for reply\n");
-    pthread_mutex_lock(m);
     while (true) {
         if (!requests.empty()) {
             l.info("running reenterant request...\n");
             processRequest();
             continue;
         }
-        if (returns.empty()) {
+        if (ret->isValid) {
             break;
         }
-
-        l.debug("calling waitPort in thread:%d\n", rpcThreadId);
-        transport->waitPort(this);
+    
+        l.debug("waiting to receive from the port:%d\n", id);
+        transport->receive(this);
     }
-    pthread_mutex_unlock(m);
-    isWaiting = false;
+    canProcessRequests = false;
+
+    transport->releasePort(this);
 }
 
 bool Port::processRequest () {
@@ -235,6 +250,8 @@ bool Port::processRequest () {
     req->call();
     rpcThreadId = otid;
 
+    pthread_mutex_lock(&transport->monitor);
+
     if (lreq) {
         delete lreq;
     }
@@ -243,9 +260,23 @@ bool Port::processRequest () {
     if (req->returnWriter) {
         l.debug("pushing return writer %08x (previous frame:%08x)\n", req->returnWriter, writer.frame);
         writer.push(req->returnWriter);
-        transport->flushPort(this);
+        transport->send(this);
     }
 
-    pthread_mutex_lock(&transport->monitor);
     return true;
+}
+
+bool Port::isActive ()
+{
+    if (!returns.empty()) {
+        return true;
+    }
+    if (!requests.empty()) {
+        return true;
+    }
+    if (writer.frame || reader.frame) {
+        return true;
+    }
+
+    return false;
 }

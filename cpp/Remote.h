@@ -596,24 +596,43 @@ struct Transport {
     }
     virtual ~Transport ();
 
-    /** Returns a port and activate it. */
-    Port* getPort (int pid);
+    /** Returns a port with monitor lock held. */
+    Port *getPort (int pid);
 
-    /** Returns a default port bound for current thread. */
-    Port* getPort ();
+    /**
+     * Same as getPort(pid) except that this returns a port bound to
+     * current thread.
+     */
+    Port *getPort ();
 
-    /** Flush out-going messages synchronously. Called by port. */
-    virtual void flushPort (Port *p) = 0;
+    /** Release monitor and finish using the port */
+    void releasePort (Port *p);
 
-    /** Wait until port is updated. */
-    virtual void waitPort (Port *p) = 0;
+    /** synchronously send messages provided from the port. called by port. */
+    virtual void send (Port *p) = 0;
+
+    /** Wait until given port gets (partial) messages. called by port. */
+    virtual void receive (Port *p) = 0;
 
     /**
      * Notifies that new request was added in the given port but no thread
-     * was scheduled to run it.
-     * Transport is responsible for executing the requests eventually.
+     * was scheduled to run it. Transport is responsible for executing the
+     * requests as soon as possible.
      */
     virtual void notifyUnhandledRequest (Port *p) = 0;
+
+protected:
+    /**
+     * Derived class may need to use getPort() while holding the lock already.
+     * This utility is provided for the case recursive lock is not available.
+     */
+    Port *getPortWithLock (int pid);
+
+    /**
+     * Derived class may need to use releasePort() while holding the lock yet.
+     * Provided as utility method.
+     */
+    void releasePortWithLock (Port *p);
 };
 
 /**
@@ -643,50 +662,55 @@ struct Port {
 
     // ready to serve incoming reenterant request
     // until all return value is received.
-    bool isWaiting;
+    bool canProcessRequests;
     pthread_cond_t wakeCondition;
 
-    Port (Transport *trans): transport(trans), isWaiting(false),
+    Port (Transport *trans): transport(trans), canProcessRequests(false),
             lastRequest(0), reader(this), writer(this) {
         pthread_cond_init(&wakeCondition, 0);
     }
 
     virtual ~Port ();
 
+    /**
+     * Encode out-going messages to the buffer.
+     * Called from the transport with the monitor lock held.
+     * Returns either STOPPED or COMPLETE or ABORT.
+     */
+    base::Frame::STATE encode (Buffer *buf);
+
     /*
-     * read incoming byte streams from the buffer.
+     * Decode incoming messages from the buffer.
+     * Called from the transport with the monitor lock held.
      * Returns either STOPPED or COMPLETE or ABORT.
      */
-    base::Frame::STATE read (Buffer *buf);
+    base::Frame::STATE decode (Buffer *buf);
 
     /**
-     * write out-going data to the buffer.
-     * Returns either STOPPED or COMPLETE or ABORT.
+     * Blocks until the transport finishes to send out-going messages,
+     * and then release monitor lock.
+     * @arg ret is used for registering future object. (not implemented yet)
      */
-    base::Frame::STATE write (Buffer *buf);
-
-    /** Flush out-going messages synchronously. */
-    void flush ();
+    void send (Return *ret);
 
     /**
-     * Enqueue the return object which will hold response in order.
-     * On return value arrival, queued return object will be automatically
-     * removed. You can wait on the return.
+     * Send messages and then wait for the return value.
+     * This releases monitor lock on return.
+     * NOTE that this may serve recursive rpc request until the return arrive.
      */
-    void addReturn (Return *ret);
-
-    /**
-     * Blocks until all return values are vailable.
-     * If there're a thread waiting on sendAndWait(), it will run the request.
-     * (i.e. reenterant call)
-     */
-    void flushAndWait ();
+    void sendAndWait (Return *ret);
 
     /**
      * Handle a request added into this port and shift internal request queue.
      * Returns true if a request was handled.
      */
     bool processRequest ();
+
+    /**
+     * Returns false if the port is no longer used at this moment.
+     * Should be called with monitor lock held. 
+     */
+    bool isActive ();
 };
 
 /**
@@ -741,9 +765,10 @@ struct Exportable: T {
  * Return value holder.
  */
 struct Return: base::Frame {
-    int index; /** type of return. 0 for normal type, 1+ for exceptions */
+    int index;
     void *value;
-    Return (): index(-1) {}
+    bool isValid;
+    Return (): index(-1), isValid(false) {}
 };
 
 struct OwnFrame {

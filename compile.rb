@@ -433,7 +433,7 @@ packages.each { |pkg|
                 }
                 f.puts "        p->writer.push(&req);"
                 if async
-                    f.puts "        p->flush();"
+                    f.puts "        p->send(0);"
                     f.puts "    }"
                     next
                 end
@@ -442,8 +442,7 @@ packages.each { |pkg|
                 f.puts "        ReturnReader<#{
                         m.returnTypes.map{|t|t.cname}.join(", ")
                         }> ret;"
-                f.puts "        p->addReturn(&ret);"
-                f.puts "        p->flushAndWait();"
+                f.puts "        p->sendAndWait(&ret);"
                 f.puts "        switch(ret.index) {"
                 if rt.name == "void"
                     f.puts "        case 0: return;"
