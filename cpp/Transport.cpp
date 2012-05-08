@@ -7,6 +7,7 @@ using namespace std;
 using namespace base;
 using namespace rop;
 
+static __thread int localThreadId;
 static __thread int rpcThreadId;
 
 Transport::~Transport ()
@@ -35,14 +36,18 @@ Port::~Port ()
     }
 }
 
-Port *Transport::getPort ()
+static int currentThreadId ()
 {
     static int nextId = 1;
-
-    if (!rpcThreadId) {
-        rpcThreadId = nextId++;
+    if (!localThreadId) {
+        localThreadId = nextId++;
     }
-    return getPort(rpcThreadId);
+    return localThreadId;
+}
+
+Port *Transport::getPort ()
+{
+    return getPort(rpcThreadId ? rpcThreadId : currentThreadId());
 }
 
 Port *Transport::getPort (int pid)
@@ -195,7 +200,7 @@ void Port::flushAndWait ()
     while (true) {
         if (!requests.empty()) {
             l.info("running reenterant request...\n");
-            handleRequest();
+            processRequest();
             continue;
         }
         if (returns.empty()) {
@@ -209,7 +214,7 @@ void Port::flushAndWait ()
     isWaiting = false;
 }
 
-bool Port::handleRequest () {
+bool Port::processRequest () {
     if (requests.empty()) {
         return false;
     }
@@ -222,11 +227,13 @@ bool Port::handleRequest () {
     lastRequest = 0;
     
     pthread_mutex_unlock(&transport->monitor);
-    int ortid = rpcThreadId;
-    rpcThreadId = id; // attach to rpc thread while executing the request.
+
     l.debug("calling!!! %08x\n", req);
+    int otid = rpcThreadId;
+    // attach to rpc thread only when processing sync methods.
+    rpcThreadId = (req->messageHead & (0x1<<6)) ? currentThreadId() : id;
     req->call();
-    rpcThreadId = ortid;
+    rpcThreadId = otid;
 
     if (lreq) {
         delete lreq;
@@ -238,6 +245,7 @@ bool Port::handleRequest () {
         writer.push(req->returnWriter);
         transport->flushPort(this);
     }
+
     pthread_mutex_lock(&transport->monitor);
     return true;
 }

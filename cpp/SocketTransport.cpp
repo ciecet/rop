@@ -45,7 +45,7 @@ void SocketTransport::loop ()
             if (!i->second->requests.empty()) {
                 l.info("executing request...\n");
             }
-            while (i->second->handleRequest());
+            while (i->second->processRequest());
         }
         pthread_mutex_unlock(&monitor);
     }

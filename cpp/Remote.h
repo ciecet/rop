@@ -686,7 +686,7 @@ struct Port {
      * Handle a request added into this port and shift internal request queue.
      * Returns true if a request was handled.
      */
-    bool handleRequest ();
+    bool processRequest ();
 };
 
 /**
