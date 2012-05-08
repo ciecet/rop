@@ -17,7 +17,7 @@ struct SocketTransport: Transport {
     bool isLooping;
     
     SocketTransport (Registry &r, int i, int o): Transport(r),
-            inFd(i),outFd(o),isSending(false), inPort(0), isLooping(false) {
+            inFd(i), outFd(o), inPort(0), isSending(false), isLooping(false) {
         pthread_cond_init(&writableCondition, 0);
     }
     ~SocketTransport () {

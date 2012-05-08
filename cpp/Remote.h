@@ -401,7 +401,7 @@ struct Reader<base::Ref<T> >: base::Frame {
     base::Ref<T> &obj;
     Reader (base::Ref<T> &o): obj(o) {}
     STATE run (base::Stack *stack) {
-        int i;
+        int8_t i;
         BEGIN_STEP();
         TRY_READ(int8_t, i, stack);
         if (i) {
@@ -665,8 +665,8 @@ struct Port {
     bool canProcessRequests;
     pthread_cond_t wakeCondition;
 
-    Port (Transport *trans): transport(trans), canProcessRequests(false),
-            lastRequest(0), reader(this), writer(this) {
+    Port (Transport *trans): transport(trans), lastRequest(0),
+            reader(this), writer(this), canProcessRequests(false) {
         pthread_cond_init(&wakeCondition, 0);
     }
 

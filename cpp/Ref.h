@@ -45,6 +45,7 @@ public:
         if (object) {
             object->ref();
         }
+        return *this;
     }
     Ref<T> &operator=(Ref<T> &r) {
         if (object) {
@@ -52,6 +53,7 @@ public:
         }
         object = r.object;
         object->ref();
+        return *this;
     }
     operator void*() { return object; }
     bool operator==(const Ref<T>& r) {
@@ -131,6 +133,7 @@ public:
         if (object) {
             object->ref();
         }
+        return *this;
     }
     ContainerRef<T> &operator=(ContainerRef<T> &r) {
         if (object) {
@@ -138,6 +141,7 @@ public:
         }
         object = r.object;
         object->ref();
+        return *this;
     }
     operator void*() { return object; }
     bool operator==(const ContainerRef<T>& r) {

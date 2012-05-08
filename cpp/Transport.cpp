@@ -101,7 +101,7 @@ struct MessageReader: Frame {
     Port* port;
     Log log;
 
-    MessageReader (Port *p): port(p), request(0), log("msgrdr ") {}
+    MessageReader (Port *p): request(0), port(p), log("msgrdr ") {}
     ~MessageReader () {
         if (request) {
             delete request;
