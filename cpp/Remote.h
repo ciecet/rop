@@ -811,6 +811,9 @@ struct ReturnReader: Return {
     STATE run (base::Stack *stack) {
         BEGIN_STEP();
         TRY_READ(int32_t, index, stack);
+        if (index == -1) {
+            return COMPLETE;
+        }
 
         NEXT_STEP();
         stack->push(tuple.items[index]->frame);
@@ -857,6 +860,9 @@ struct ReturnWriter: Return {
 
         NEXT_STEP();
         TRY_WRITE(int32_t, index, stack);
+        if (index == -1) {
+            return COMPLETE;
+        }
 
         NEXT_STEP();
         stack->push(tuple.items[index]->frame);
