@@ -149,7 +149,7 @@ class TypeNode
             }
         end
 
-        return if %w(void async String Map List Nullable i8 i16 i32 i16).include?(name)
+        return if %w(void async String Map List Nullable i8 i16 i32).include?(name)
         return if package.defs.has_key?(name)
         throw "Unknown type #{name}"
     end
@@ -184,12 +184,6 @@ packages.each { |p|
 
 ################################################################################
 ## From now on, C++ Specific Only
-#
-# StructNode = Struct.new(:name, :fieldTypes)
-# ExceptionNode = Struct.new(:name, :fieldTypes)
-# InterfaceNode = Struct.new(:name, :methods)
-# MethodNode = Struct.new(:name, :returnTypes, :argumentTypes)
-# TypeNode = Struct.new(:name, :subTypes, :variable)
 
 CPP_TYPES = {
     "String" => "std::string",
@@ -207,12 +201,13 @@ class StructNode
     def externalTypes
         ts = []
         fieldTypes.each { |t|
-            ts << t unless CPP_TYPES.has_key?(t.name)
+            ts << t
             next unless t.subTypes
             t.subTypes.each { |t2|
-                ts << t2 unless CPP_TYPES.has_key?(t2.name)
+                ts << t2
             }
         }
+        ts.delete_if { |t| CPP_TYPES.has_key?(t.name) }
         ts.uniq
     end
 end
@@ -222,20 +217,21 @@ class InterfaceNode
         ts = []
         methods.each { |m|
             m.returnTypes.each { |t|
-                ts << t unless CPP_TYPES.has_key?(t.name)
+                ts << t
                 next unless t.subTypes
                 t.subTypes.each { |t2|
-                    ts << t2 unless CPP_TYPES.has_key?(t2.name)
+                    ts << t2
                 }
             }
             m.argumentTypes.each { |t|
-                ts << t unless CPP_TYPES.has_key?(t.name)
+                ts << t
                 next unless t.subTypes
                 t.subTypes.each { |t2|
-                    ts << t2 unless CPP_TYPES.has_key?(t2.name)
+                    ts << t2
                 }
             }
         }
+        ts.delete_if { |t| CPP_TYPES.has_key?(t.name) }
         ts.uniq
     end
 end
@@ -267,6 +263,10 @@ class TypeNode
 
     def cnamevar
         "#{cname} #{variable}"
+    end
+
+    def cnamearg
+        "#{cname} #{'&' if package.structs.has_key?(name)}#{variable}"
     end
 end
 
@@ -394,7 +394,7 @@ packages.each { |pkg|
             f.puts "struct #{name}: rop::Interface {"
             intf.methods.each {|m|
                 f.puts "    virtual #{m.returnTypes[0].cname} #{m.name} (#{
-                        m.argumentTypes.map{|t|t.cnamevar}.join(", ")
+                        m.argumentTypes.map{|t|t.cnamearg}.join(", ")
                         }) = 0;"
             }
             f.puts "};"
@@ -417,10 +417,10 @@ packages.each { |pkg|
 
 
                 f.puts "    #{rt.cname} #{m.name} (#{
-                        m.argumentTypes.map{|t|t.cnamevar}.join(", ")
+                        m.argumentTypes.map{|t|t.cnamearg}.join(", ")
                         }) {"
                 f.puts "        Transport *trans = remote->registry->transport;"
-                f.puts "        Port *p = trans->getPort();"
+                f.puts "        Port *__p = trans->getPort();"
                 f.puts ""
                 m.argumentTypes.each { |t|
                     f.puts "        Writer<#{t.cname}> __arg_#{t.variable}(#{t.variable});"
@@ -431,9 +431,9 @@ packages.each { |pkg|
                     t = m.argumentTypes[i]
                     f.puts "        req.args[#{i}] = &__arg_#{t.variable};"
                 }
-                f.puts "        p->writer.push(&req);"
+                f.puts "        __p->writer.push(&req);"
                 if async
-                    f.puts "        p->send(0);"
+                    f.puts "        __p->send(0);"
                     f.puts "    }"
                     next
                 end
@@ -442,7 +442,7 @@ packages.each { |pkg|
                 f.puts "        ReturnReader<#{
                         m.returnTypes.map{|t|t.cname}.join(", ")
                         }> ret;"
-                f.puts "        p->sendAndWait(&ret);"
+                f.puts "        __p->sendAndWait(&ret);"
                 f.puts "        switch(ret.index) {"
                 if rt.name == "void"
                     f.puts "        case 0: return;"

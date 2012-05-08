@@ -1,5 +1,10 @@
 package test {
 
+    struct Person {
+        String name;
+        EchoCallback callback;
+    }
+
     exception TestException {
         Nullable<i32> i;
     }
@@ -13,5 +18,6 @@ package test {
         String concat (List<String> msgs);
         void touchmenot () throws TestException;
         void recursiveEcho (String msg, EchoCallback cb);
+        void hello (Person p);
     }
 }

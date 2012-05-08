@@ -19,13 +19,13 @@ template<>
 struct Stub<test::EchoCallback>: test::EchoCallback {
     void call (std::string msg) {
         Transport *trans = remote->registry->transport;
-        Port *p = trans->getPort();
+        Port *__p = trans->getPort();
 
         Writer<std::string> __arg_msg(msg);
         RequestWriter<1> req(1<<6, remote->id, 0);
         req.args[0] = &__arg_msg;
-        p->writer.push(&req);
-        p->send(0);
+        __p->writer.push(&req);
+        __p->send(0);
     }
 };
 template<>

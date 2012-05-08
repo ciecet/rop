@@ -26,6 +26,10 @@ struct EchoImpl: Exportable<Echo> {
     string concat (vector<string> msgs);
     void touchmenot ();
     void recursiveEcho (string msg, Ref<EchoCallback> cb);
+    void hello (test::Person &p) {
+        string greeting("Hello, ");
+        p.callback->call(greeting + p.name);
+    }
 };
 
 string EchoImpl::echo (string msg)
@@ -88,7 +92,13 @@ void test1 ()
         } catch (TestException &e) {
             printf("Got exception :%d\n", *e.i);
         }
-        e.recursiveEcho("rrrrrrrrrrrrrrrrrrrrrrrrrrr", new EchoCallbackImpl());
+        Ref<EchoCallback> cb = new EchoCallbackImpl();
+        e.recursiveEcho("rrrrrrrrrrrrrrrrrrrrrrrrrrr", cb);
+        Person p;
+        p.name = "Sooin";
+        p.callback = cb;
+        e.hello(p);
+        sleep(1);
     } else {
         Log l("server ");
         // server
@@ -98,8 +108,6 @@ void test1 ()
         l.info("enter loop...\n");
         trans.loop();
     }
-
-    sleep(1);
 }
 
 int main ()

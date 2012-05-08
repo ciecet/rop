@@ -3,12 +3,14 @@
 #include "Remote.h"
 #include "TestException.h"
 #include "EchoCallback.h"
+#include "Person.h"
 namespace test {
 struct Echo: rop::Interface {
     virtual std::string echo (std::string msg) = 0;
     virtual std::string concat (std::vector<std::string>  msgs) = 0;
     virtual void touchmenot () = 0;
     virtual void recursiveEcho (std::string msg, base::Ref<test::EchoCallback>  cb) = 0;
+    virtual void hello (test::Person &p) = 0;
 };
 }
 namespace rop {
@@ -24,15 +26,15 @@ template<>
 struct Stub<test::Echo>: test::Echo {
     std::string echo (std::string msg) {
         Transport *trans = remote->registry->transport;
-        Port *p = trans->getPort();
+        Port *__p = trans->getPort();
 
         Writer<std::string> __arg_msg(msg);
         RequestWriter<1> req(0<<6, remote->id, 0);
         req.args[0] = &__arg_msg;
-        p->writer.push(&req);
+        __p->writer.push(&req);
 
         ReturnReader<std::string> ret;
-        p->sendAndWait(&ret);
+        __p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return ret.get<std::string>(0);
         default: throw rop::RemoteException();
@@ -40,15 +42,15 @@ struct Stub<test::Echo>: test::Echo {
     }
     std::string concat (std::vector<std::string>  msgs) {
         Transport *trans = remote->registry->transport;
-        Port *p = trans->getPort();
+        Port *__p = trans->getPort();
 
         Writer<std::vector<std::string> > __arg_msgs(msgs);
         RequestWriter<1> req(0<<6, remote->id, 1);
         req.args[0] = &__arg_msgs;
-        p->writer.push(&req);
+        __p->writer.push(&req);
 
         ReturnReader<std::string> ret;
-        p->sendAndWait(&ret);
+        __p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return ret.get<std::string>(0);
         default: throw rop::RemoteException();
@@ -56,13 +58,13 @@ struct Stub<test::Echo>: test::Echo {
     }
     void touchmenot () {
         Transport *trans = remote->registry->transport;
-        Port *p = trans->getPort();
+        Port *__p = trans->getPort();
 
         RequestWriter<0> req(0<<6, remote->id, 2);
-        p->writer.push(&req);
+        __p->writer.push(&req);
 
         ReturnReader<void, test::TestException> ret;
-        p->sendAndWait(&ret);
+        __p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return;
         case 1: throw ret.get<test::TestException>(1);
@@ -71,17 +73,33 @@ struct Stub<test::Echo>: test::Echo {
     }
     void recursiveEcho (std::string msg, base::Ref<test::EchoCallback>  cb) {
         Transport *trans = remote->registry->transport;
-        Port *p = trans->getPort();
+        Port *__p = trans->getPort();
 
         Writer<std::string> __arg_msg(msg);
         Writer<base::Ref<test::EchoCallback> > __arg_cb(cb);
         RequestWriter<2> req(0<<6, remote->id, 3);
         req.args[0] = &__arg_msg;
         req.args[1] = &__arg_cb;
-        p->writer.push(&req);
+        __p->writer.push(&req);
 
         ReturnReader<void> ret;
-        p->sendAndWait(&ret);
+        __p->sendAndWait(&ret);
+        switch(ret.index) {
+        case 0: return;
+        default: throw rop::RemoteException();
+        }
+    }
+    void hello (test::Person &p) {
+        Transport *trans = remote->registry->transport;
+        Port *__p = trans->getPort();
+
+        Writer<test::Person> __arg_p(p);
+        RequestWriter<1> req(0<<6, remote->id, 4);
+        req.args[0] = &__arg_p;
+        __p->writer.push(&req);
+
+        ReturnReader<void> ret;
+        __p->sendAndWait(&ret);
         switch(ret.index) {
         case 0: return;
         default: throw rop::RemoteException();
@@ -161,6 +179,23 @@ struct Skeleton<test::Echo>: SkeletonBase {
             }
         }
     };
+    struct __req_hello: Request {
+        test::Echo *object;
+        ArgumentsReader<test::Person> args;
+        ReturnWriter<void> ret;
+        __req_hello (test::Echo *o): object(o) {
+            argumentsReader = &args;
+            returnWriter = &ret;
+        }
+        void call () {
+            try {
+                object->hello(args.get<test::Person>(0));
+                ret.index = 0;
+            } catch (...) {
+                ret.index = -1;
+            }
+        }
+    };
     Request *createRequest (int mid) {
         test::Echo *o = static_cast<test::Echo*>(object.get());
         switch (mid) {
@@ -168,6 +203,7 @@ struct Skeleton<test::Echo>: SkeletonBase {
         case 1: return new __req_concat(o);
         case 2: return new __req_touchmenot(o);
         case 3: return new __req_recursiveEcho(o);
+        case 4: return new __req_hello(o);
         default: return 0;
         }
     }
