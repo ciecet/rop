@@ -69,22 +69,24 @@ void test1 ()
     pipe2(p1, O_NONBLOCK);
 
     if (fork()) {
-        Stub<Echo> e;
         Log l("client ");
         // client
         Registry reg;
         SocketTransport trans(reg, p0[0], p1[1]);
 
         l.info("getting remote Echo...\n");
+        Stub<Echo> e;
         e.remote = reg.getRemote("Echo");
 
         l.info("using Echo...\n");
         printf("%s\n", e.echo("hi!").c_str());
+
         vector<string> args;
         args.push_back("a");
         args.push_back("b");
         args.push_back("c");
         printf("%s\n", e.concat(args).c_str());
+
         try {
             printf("Invoking touchmenot()\n");
             e.touchmenot();
@@ -92,8 +94,10 @@ void test1 ()
         } catch (TestException &e) {
             printf("Got exception :%d\n", *e.i);
         }
+
         Ref<EchoCallback> cb = new EchoCallbackImpl();
         e.recursiveEcho("rrrrrrrrrrrrrrrrrrrrrrrrrrr", cb);
+
         Person p;
         p.name = "Sooin";
         p.callback = cb;

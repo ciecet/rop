@@ -505,8 +505,9 @@ typedef base::Ref<Remote> RemoteRef;
  */
 struct SkeletonBase: base::RefCounted<SkeletonBase> {
     int id; // positive.
+    int32_t stamp;
     InterfaceRef object;
-    SkeletonBase (Interface *o): object(o) {}
+    SkeletonBase (Interface *o): stamp(0), object(o) {}
     virtual ~SkeletonBase () {}
     virtual Request *createRequest (int methodIndex) = 0;
 };
@@ -538,7 +539,7 @@ struct Registry {
 
     /**
      * Create skeleton of this registry.
-     * serves getRemote(id), notifyRemoteDestroy(id)
+     * serves getRemote(id), notifyRemoteDestroy(id, stamp)
      */
     SkeletonBase *createSkeleton ();
 
@@ -551,7 +552,7 @@ struct Registry {
      * id value should be negative. (positive value corresponds to skeleton)
      * if the remote instance is missing, this creates the one.
      */
-    Remote *getRemote (int id);
+    Remote *getRemote (int32_t id);
 
     /**
      * Get a remote object exported by the peer.
@@ -564,7 +565,7 @@ struct Registry {
      * Notifies to the remote peer that given remote object was no longer
      * used by local.
      */
-    void notifyRemoteDestroy (int id);
+    void notifyRemoteDestroy (int32_t id, int32_t stamp);
 
     /**
      * Returns skeleton object identified by id.
@@ -730,11 +731,12 @@ struct Request {
  * This is base::Ref-counted by stub instances, and notifies to the peer on destroy.
  */
 struct Remote: base::RefCounted<Remote> {
-    int id; // negative
+    int32_t id; // negative
+    int32_t stamp;
     Registry *registry;
     ~Remote () {
         if (registry) {
-            registry->notifyRemoteDestroy(id);
+            registry->notifyRemoteDestroy(id, stamp);
         }
     }
 };
@@ -938,18 +940,11 @@ struct ArgumentsReader: base::Frame {
 template <typename T>
 struct InterfaceReader: base::Frame {
     base::Ref<T> &object;
+    int32_t id;
+    int32_t stamp;
     InterfaceReader (base::Ref<T> &o): object(o) {}
     STATE run (base::Stack *stack) {
-        int8_t i;
-        int id;
         BEGIN_STEP();
-        TRY_READ(int8_t, i, stack);
-        if (!i) {
-            object = 0;
-            return COMPLETE;
-        }
-
-        NEXT_STEP();
         TRY_READ(int32_t, id, stack);
         id = -id; // reverse local <-> remote on receive
 
@@ -958,9 +953,13 @@ struct InterfaceReader: base::Frame {
                     static_cast<PortStack*>(stack)->port->transport->registry->
                             getSkeleton(id)->object.get());
         } else {
-            object = new Stub<T>();
-            object->remote = static_cast<PortStack*>(stack)->port->transport->
+            NEXT_STEP();
+            TRY_READ(int32_t, stamp, stack);
+            Remote *r = static_cast<PortStack*>(stack)->port->transport->
                     registry->getRemote(id);
+            r->stamp = stamp;
+            object = new Stub<T>();
+            object->remote = r;
         }
 
         END_STEP();
@@ -971,33 +970,23 @@ template <typename T>
 struct InterfaceWriter: base::Frame {
 
     base::Ref<T> &object;
-    int id;
+    SkeletonBase *skeleton;
 
     InterfaceWriter (base::Ref<T> &o): object(o) {}
 
     STATE run (base::Stack *stack) {
-        Log l("infwrite ");
-        int8_t i;
-
         BEGIN_STEP();
-        if (object) {
-            i = 1;
-            TRY_WRITE(int8_t, i, stack);
-        } else {
-            i = 0;
-            TRY_WRITE(int8_t, i, stack);
-            return COMPLETE;
-        }
-
-        NEXT_STEP();
         if (object->remote) {
-            id = object->remote->id;
+            TRY_WRITE(int32_t, object->remote->id, stack);
         } else {
-            id = static_cast<PortStack*>(stack)->port->transport->registry->
-                    getSkeleton(object.get())->id;
-        }
-        TRY_WRITE(int32_t, id, stack);
+            skeleton = static_cast<PortStack*>(stack)->port->
+                    transport->registry->getSkeleton(object.get());
+            skeleton->stamp++;
+            TRY_WRITE(int32_t, skeleton->id, stack);
 
+            NEXT_STEP();
+            TRY_WRITE(int32_t, skeleton->stamp, stack);
+        }
         END_STEP();
     }
 };

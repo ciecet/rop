@@ -38,7 +38,7 @@ struct RegistrySkeleton: SkeletonBase {
 
     struct __req_notifyRemoteDestroy: Request {
         Registry *registry;
-        ArgumentsReader<int32_t> args;
+        ArgumentsReader<int32_t, int32_t> args;
         __req_notifyRemoteDestroy(Registry *reg): registry(reg) {
             argumentsReader = &args;
             returnWriter = 0;
@@ -46,10 +46,16 @@ struct RegistrySkeleton: SkeletonBase {
 
         void call () {
             Log l("notifyRemoteDestroy ");
-            int id = -args.get<int32_t>(0); // reverse local<->remote
-            l.debug("deleting skeleton:%d\n", id);
+            int32_t id = -args.get<int32_t>(0); // reverse local<->remote
+            int32_t stamp = args.get<int32_t>(1);
 
             SkeletonBase *skel = registry->skeletons[id];
+            if (skel->stamp > stamp) {
+                l.debug("Skipped skeleton deletion.\n");
+                return;
+            }
+
+            l.debug("deleting skeleton:%d\n", id);
             registry->skeletons.erase(id);
             registry->skeletonByExportable.erase(skel->object.get());
             delete skel;
@@ -84,15 +90,17 @@ Remote *Registry::getRemote (string objname)
     return getRemote(-ret.get<int32_t>(0)); // reverse local<->remote
 }
 
-void Registry::notifyRemoteDestroy (int id)
+void Registry::notifyRemoteDestroy (int32_t id, int32_t stamp)
 {
     remotes.erase(id);
 
     Port *p = transport->getPort(0);
 
-    RequestWriter<1> req(0x1<<6, 0, 1);
     Writer<int32_t> arg0(id);
+    Writer<int32_t> arg1(stamp);
+    RequestWriter<2> req(0x1<<6, 0, 1);
     req.args[0] = &arg0;
+    req.args[1] = &arg1;
     p->writer.push(&req);
     p->send(0);
 }
@@ -123,6 +131,7 @@ SkeletonBase *Registry::getSkeleton (Interface *obj)
     if (!skel) {
         skel = obj->createSkeleton();
         skel->id = nextSkeletonId++;
+        skel->stamp = 0;
         skeletons[skel->id] = skel;
     }
     return skel;

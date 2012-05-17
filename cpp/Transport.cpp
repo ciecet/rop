@@ -122,11 +122,11 @@ struct MessageReader: Frame {
                 // no waiting return!
                 return ABORTED;
             }
+            port->returns.pop_front();
             stack->push(ret);
             CALL();
             ret->isValid = true;
             // TODO: notify that return value is available. (for future)
-            port->returns.pop_front();
             pthread_cond_signal(&port->wakeCondition);
         } else {
             log.debug("Getting request...\n");

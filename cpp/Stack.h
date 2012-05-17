@@ -75,11 +75,11 @@ struct Stack {
     }
 
     Frame::STATE run () {
-        Log l("stackrunner ");
+        //Log l("stackrunner ");
         while (frame) {
-            l.debug("running %08x...\n", frame);
+            //l.debug("running %08x...\n", frame);
             Frame::STATE s = frame->run(this);
-            l.debug("returned %d\n", s);
+            //l.debug("returned %d\n", s);
             switch (s) {
             case Frame::STOPPED:
                 return Frame::STOPPED;
