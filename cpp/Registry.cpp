@@ -2,7 +2,47 @@
 #include "Log.h"
 
 using namespace std;
+using namespace base;
 using namespace rop;
+
+namespace rop {
+
+struct IdStamp {
+    int32_t id;
+    int32_t stamp;
+    IdStamp(int32_t i, int32_t s): id(i), stamp(s) {}
+    IdStamp() {}
+};
+
+template <>
+struct Writer<IdStamp>: Frame {
+    IdStamp &obj;
+    Writer (IdStamp &o): obj(o) {}
+    STATE run (Stack *stack) {
+        int64_t i;
+        BEGIN_STEP();
+        i = obj.id;
+        i = (i<<32) | obj.stamp;
+        TRY_WRITE(int64_t, i, stack);
+        END_STEP();
+    }
+};
+
+template <>
+struct Reader<IdStamp>: Frame {
+    IdStamp &obj;
+    Reader (IdStamp &o): obj(o) {}
+    STATE run (Stack *stack) {
+        int64_t i;
+        BEGIN_STEP();
+        TRY_READ(int64_t, i, stack);
+        obj.id = i >> 32;
+        obj.stamp = i;
+        END_STEP();
+    }
+};
+
+}
 
 struct RegistrySkeleton: SkeletonBase {
     Registry *registry;
@@ -12,7 +52,7 @@ struct RegistrySkeleton: SkeletonBase {
     struct __req_getRemote: Request {
         Registry *registry;
         ArgumentsReader<string> args;
-        ReturnWriter<int32_t> ret;
+        ReturnWriter<IdStamp> ret;
         __req_getRemote(Registry *reg): registry(reg) {
             argumentsReader = &args;
             returnWriter = &ret;
@@ -21,16 +61,16 @@ struct RegistrySkeleton: SkeletonBase {
         void call () {
             Log l("getRemote ");
             l.debug("finding %s\n", args.get<string>(0).c_str());
-            map<string,InterfaceRef>::iterator i =
+            map<string,InterfaceRef>::iterator iter =
                     registry->exportables.find(args.get<string>(0));
-            if (i == registry->exportables.end()) {
-                ret.get<int32_t>(0) = 0;
-                ret.index = 0;
+            if (iter == registry->exportables.end()) {
+                ret.index = -1;
                 l.debug("not found\n");
                 return;
             }
-            SkeletonBase *skel = registry->getSkeleton(i->second.get());
-            ret.get<int32_t>(0) = skel->id;
+            SkeletonBase *skel = registry->getSkeleton(iter->second.get());
+            skel->stamp++;
+            ret.get<IdStamp>(0) = IdStamp(skel->id, skel->stamp);
             ret.index = 0;
             l.debug("found %08x(%d)\n", skel, skel->id);
         }
@@ -85,9 +125,12 @@ Remote *Registry::getRemote (string objname)
     req.args[0] = &arg0;
     p->writer.push(&req);
 
-    ReturnReader<int32_t> ret;
+    ReturnReader<IdStamp> ret;
     p->sendAndWait(&ret); // may throw exception
-    return getRemote(-ret.get<int32_t>(0)); // reverse local<->remote
+    IdStamp is = ret.get<IdStamp>(0);
+    Remote *r = getRemote(-is.id); // reverse local<->remote
+    r->stamp = is.stamp;
+    return r;
 }
 
 void Registry::notifyRemoteDestroy (int32_t id, int32_t stamp)

@@ -209,6 +209,46 @@ template<> struct Writer<int32_t>: base::Frame {
     }
 };
 
+template<> struct Reader<int64_t>: base::Frame {
+    int64_t &obj;
+    Reader (int64_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->size < 8) return STOPPED;
+        int64_t i = buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        i = (i<<8) + buf->read();
+        obj = i;
+        return COMPLETE;
+    }
+};
+
+template<> struct Writer<int64_t>: base::Frame {
+    int64_t &obj;
+    Writer (int64_t &o): obj(o) {}
+
+    STATE run (base::Stack *stack) {
+        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->margin() < 8) return STOPPED;
+        int64_t i = obj;
+        buf->write(i>>56);
+        buf->write(i>>48);
+        buf->write(i>>40);
+        buf->write(i>>32);
+        buf->write(i>>24);
+        buf->write(i>>16);
+        buf->write(i>>8);
+        buf->write(i);
+        return COMPLETE;
+    }
+};
+
 template<> struct Reader<std::string>: base::Frame {
 
     std::string &obj;
@@ -504,7 +544,7 @@ typedef base::Ref<Remote> RemoteRef;
  * This is destroyed when notified by notifyRemoteDestroy().
  */
 struct SkeletonBase: base::RefCounted<SkeletonBase> {
-    int id; // positive.
+    int32_t id; // positive.
     int32_t stamp;
     InterfaceRef object;
     SkeletonBase (Interface *o): stamp(0), object(o) {}
@@ -982,6 +1022,8 @@ struct InterfaceWriter: base::Frame {
             skeleton = static_cast<PortStack*>(stack)->port->
                     transport->registry->getSkeleton(object.get());
             skeleton->stamp++;
+
+            NEXT_STEP();
             TRY_WRITE(int32_t, skeleton->id, stack);
 
             NEXT_STEP();
