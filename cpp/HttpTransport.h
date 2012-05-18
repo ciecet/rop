@@ -41,7 +41,7 @@ struct HttpTransport: Transport {
 
     void send (Port *p);
     void receive (Port *p);
-    void notifyUnhandledRequest (Port *p) {} // already checked by loop()
+    void notifyUnhandledRequest (Port *p);
 };
 
 }

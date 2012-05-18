@@ -1,3 +1,85 @@
+var base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
+var base64Inv = []
+for (var i = 0; i<256; i++) {
+    base64Inv[i] = base64Chars.indexOf(String.fromCharCode(i))
+}
+
+var encode64 = window.btoa || function(input) {
+    var output = "";
+    var chr1, chr2, chr3 = "";
+    var enc1, enc2, enc3, enc4 = "";
+    var i = 0;
+
+    do {
+        chr1 = input.charCodeAt(i++);
+        chr2 = input.charCodeAt(i++);
+        chr3 = input.charCodeAt(i++);
+
+        enc1 = chr1 >> 2;
+        enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
+        enc3 = ((chr2 & 15) << 2) | (chr3 >> 6);
+        enc4 = chr3 & 63;
+
+        if (isNaN(chr2)) {
+            enc3 = enc4 = 64;
+        } else if (isNaN(chr3)) {
+            enc4 = 64;
+        }
+
+        output = output +
+            base64Chars.charAt(enc1) +
+            base64Chars.charAt(enc2) +
+            base64Chars.charAt(enc3) +
+            base64Chars.charAt(enc4);
+        chr1 = chr2 = chr3 = "";
+        enc1 = enc2 = enc3 = enc4 = "";
+    } while (i < input.length);
+
+    return output;
+}
+
+var decode64 = window.atob || function(input) {
+    var output = "";
+    var chr1, chr2, chr3 = "";
+    var enc1, enc2, enc3, enc4 = "";
+    var i = 0;
+
+    // remove all characters that are not A-Z, a-z, 0-9, +, /, or =
+    var base64test = /[^A-Za-z0-9\+\/\=]/g;
+    if (base64test.exec(input)) {
+        alert("There were invalid base64 characters in the input text.\n" +
+                "Valid base64 characters are A-Z, a-z, 0-9, '+', '/',and '='\n" +
+                "Expect errors in decoding.");
+    }
+    input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+
+    do {
+        enc1 = base64Inv[input.charCodeAt(i++)];
+        enc2 = base64Inv[input.charCodeAt(i++)];
+        enc3 = base64Inv[input.charCodeAt(i++)];
+        enc4 = base64Inv[input.charCodeAt(i++)];
+
+        chr1 = (enc1 << 2) | (enc2 >> 4);
+        chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+        chr3 = ((enc3 & 3) << 6) | enc4;
+
+        output = output + String.fromCharCode(chr1);
+
+        if (enc3 != 64) {
+            output = output + String.fromCharCode(chr2);
+        }
+        if (enc4 != 64) {
+            output = output + String.fromCharCode(chr3);
+        }
+
+        chr1 = chr2 = chr3 = "";
+        enc1 = enc2 = enc3 = enc4 = "";
+
+    } while (i < input.length);
+
+    return output;
+}
+
 var defineClass = function(proto) {
     var f = function() {
         if (proto.init) {
@@ -9,7 +91,7 @@ var defineClass = function(proto) {
     return f
 }
 
-var p = function(o) {
+var inspect = function(o) {
     msg = ""+o+"\n"
     for (var k in o) {
         if (o.hasOwnProperty(k)) {
@@ -269,7 +351,7 @@ var InterfaceCodec = [
             return writeAs(I32, obj.id, ret)
         }
         skel = buf.port.transport.registry.getSkeleton(obj)
-        skel.stamp++
+        skel.count++
         return writeAs(I32, skel.id, buf, ret)
     }
 ]
@@ -284,7 +366,7 @@ var Types = {
     i16: [IntegerCodec, 2],
     i32: [IntegerCodec, 4],
     String: [StringCodec],
-    void: [VoidCodec]
+    "void": [VoidCodec]
 }
 
 I8 = Types["i8"]
@@ -371,8 +453,6 @@ var createStubMethod = function(index, argTypes, retTypes) {
         p.sendAndWait(ret)
         if (ret.index === 0) {
             return ret.value
-        } else if (ret.index === null) {
-            throw "Unknown Error"
         } else {
             throw ret.value
         }
@@ -390,6 +470,7 @@ var createStub = function (type, remote) {
             isStub: true,
             init: function(r) {
                 this.remote = r
+                r.ref()
             },
             dispose: function() {
                 if (this.remote) {
@@ -443,8 +524,7 @@ var Request = defineClass({
                     return
                 }
             }
-            this.ret.value = null
-            this.ret.index = null
+            this.ret.index = -1
         }
     }
 })
@@ -475,12 +555,14 @@ var Remote = defineClass({
     init: function() {
         this.id = undefined // negative
         this.registry = undefined
+        this.count = 0 // import count.
         this.refCount = 0
     },
+    ref: function() { this.refCount++ },
     deref: function() {
-        this.refCount--
-        if (this.refCount <= 0 && this.registry) {
-            registry.notifyRemoteDestroy(this.id)
+        if (--this.refCount <= 0 && this.registry) {
+            alert('sending')
+            this.registry.notifyRemoteDestroy(this.id, this.count)
         }
     }
 })
@@ -517,15 +599,24 @@ var Registry = defineClass({
             var ret = new Return([I32])
             p.sendAndWait(ret)
             if (ret.index === 0) {
-                return this.getRemote(-ret.value)
-            } else if (ret.index === null) {
-                throw "Unknown Error"
+                var r = this.getRemote(-ret.value)
+                r.count++
+                return r
             } else {
                 throw ret.value
             }
         }
     },
-    notifyRemoteDestroy: function(id) {},
+    notifyRemoteDestroy: function(id, count) {
+        var p = this.transport.getPort(0)
+        var args = arguments
+        p.writer = function(buf) {
+            return writeRequest(buf, 1<<6, 0, 1, args, [I32, I32])
+        }
+        p.send()
+        this.remotes[id].registry = undefined
+        delete this.remotes[id]
+    },
     getSkeleton: function(id) {
         if (id.constructor === Number) {
             return this.skeletons[id]
@@ -583,7 +674,29 @@ var Transport = defineClass({
         }
     },
     send: function(p) {
-        // send request via websocket
+        // TODO: send request via websocket
+
+        var msg = []
+        buf = this.requestBuffer
+        buf.write((p.id >> 24) & 0xff)
+        buf.write((p.id >> 16) & 0xff)
+        buf.write((p.id >> 8) & 0xff)
+        buf.write(p.id & 0xff)
+        w = function() { return p.writer(buf) }
+        while (w) {
+            w = this.runCont(w)
+            while (buf.size > 0) {
+                msg.push(buf.read())
+            }
+        }
+
+        msg = encode64(String.fromCharCode.apply(String, msg))
+        alert("aysnc sending... "+msg)
+
+        req = new XMLHttpRequest()
+        req.open("POST", this.url, false)
+        req.setRequestHeader("Content-Type", "text/plain")
+        req.send(msg)
     },
     sendAndReceive: function(p) {
         // send request and wait for response via xmlhttprequest
@@ -603,7 +716,7 @@ var Transport = defineClass({
             }
         }
 
-        msg = btoa(String.fromCharCode.apply(String, msg))
+        msg = encode64(String.fromCharCode.apply(String, msg))
         alert("sending... "+msg)
 
         req = new XMLHttpRequest()
@@ -611,33 +724,23 @@ var Transport = defineClass({
         req.setRequestHeader("Content-Type", "text/plain")
         req.send(msg)
         msg = req.responseText
-        alert("got "+msg)
 
-        msg = atob(msg)
+        msg = decode64(msg)
         var arr = []
         for (var i in msg) {
             arr.push(msg.charCodeAt(i))
         }
-        window.p(arr)
+        inspect(arr)
 
-        h = msg.charCodeAt(0)
-        if ((h&(3<<6)) === 3<<6) {
-            var ret = p.returns.shift()
-            if (!ret) throw "No Return waiting"
-            r = function() { return ret.read(h&63, buf, function() {}) }
-            var i = 1
-            while (r) {
-                while (i < msg.length && buf.margin() > 0) {
-                    buf.write(msg.charCodeAt(i++))
-                }
-                r = this.runCont(r)
+        r = function() { return p.readMessage(buf, function() {}) }
+        var i = 0
+        while (r) {
+            while (i < msg.length && buf.margin() > 0) {
+                buf.write(msg.charCodeAt(i++))
             }
-            if (buf.size > 0) {
-                alert("return remaining... "+buf.size) 
-                buf.reset()
-            }
-        } else {
-            alert("Not supported");
+            alert('reading message from buf:'+buf.size)
+            r = this.runCont(r)
+            console.log(r)
         }
     },
     runCont: function(cont) {
@@ -648,7 +751,7 @@ var Transport = defineClass({
                 throw e
             }
             console.log(e.reason)
-            return cont
+            return e.cont
         }
     }
 })
@@ -670,13 +773,13 @@ var Port = defineClass({
     },
     sendAndWait: function(ret) {
         this.returns.push(ret)
-        this.transport.sendAndReceive(this)
-            //if (this.requests.length > 0) {
-            //    processRequest()
-            //    continue
-            //}
-            //if (ret.isValid) break
-        //    this.transport.receive(this)
+        do {
+            this.transport.sendAndReceive(this)
+            if (this.requests.length > 0) {
+                processRequest()
+            }
+            alert('got return? index:'+ret.index)
+        } while (ret.index === undefined)
         this.transport.releasePort(this)
     },
     processRequest: function() {
@@ -710,6 +813,34 @@ var Port = defineClass({
             return true
         }
         return false
+    },
+    readMessage: function(buf, ret) {
+        var methodIndex;
+        var request;
+        var self = this
+
+        return readAs(I8, buf, function(messageHead) {
+            if ((messageHead & (3<<6)) === (3<<6)) {
+                var r = self.returns.pop()
+                if (!r) throw new Interrupt("ABORTED")
+                return r.read(messageHead, buf, ret)
+            } else {
+                return readAs(I32, buf, function(objectId) {
+                    objectId = -objectId
+                    if (objectId < 0) throw new Interrupt("ABORTED")
+                    return readAs(I16, buf, function(methodIndex) {
+                        var skel = self.transport.registry.getSkeleton(objectId)
+                        if (!skel) throw new Interrupt("ABORTED")
+                        var req = new Request(skel.object,
+                                skel.methods[methodIndex])
+                        req.messageHead = messageHead
+                        return req.readArguments(buf, function() {
+                            self.requests.push(req)
+                        })
+                    })
+                })
+            }
+        })
     }
 })
 
@@ -719,9 +850,11 @@ var Return = defineClass({
         //this.index = undefined
         //this.value = undefined
     },
-    read: function(idx, buf, ret) {
-        this.index = idx
-        if (this.returnTypes[idx] === undefined) {
+    read: function(messageHead, buf, ret) {
+        var idx = messageHead & 63
+        this.index = (idx == 63) ? -1 : idx
+
+        if (!this.returnTypes[idx]) {
             return ret(this)
         }
 
@@ -732,46 +865,24 @@ var Return = defineClass({
         })
     },
     write: function(buf, ret) {
+        if (!this.returnTypes[this.index]) {
+            return writeAs(I8, (3<<6)|63, buf, ret)
+        }
+
         return writeAs(I8, (3<<6) + this.index, buf, function() {
             return writeAs(returnTypes[this.index], this.value, buf, ret)
         })
     }
 })
 
-var readMessage = function(port, buf, ret) {
-    var methodIndex;
-    var request;
-
-    return readAs(I8, buf, function(messageHead) {
-        if (messageHead & (3<<6) === (3<<6)) {
-            var r = port.returns.pop()
-            if (!r) throw new Interrupt("ABORTED")
-            return r.read(messageHead&((1<<6)-1), buf, ret)
-        } else {
-            return readAs(I32, buf, function(objectId) {
-                objectId = -objectId
-                if (objectId < 0) throw new Interrupt("ABORTED")
-                return readAs(I16, buf, function(methodIndex) {
-                    var skel = port.transport.registry.getSkeleton(objectId)
-                    if (!skel) throw new Interrupt("ABORTED")
-                    var req = new Request(skel.object,
-                            skel.methods[methodIndex])
-                    req.messageHead = messageHead
-                    return req.readArguments(buf, function() {
-                        port.requests.push(req)
-                    })
-                })
-            })
-        }
-    })
-}
-
-var trans = new Transport("http://localhost:8080")
+var trans = new Transport("http://10.12.0.7:8080")
 var reg = trans.registry
 var rr = reg.getRemote("Echo")
-p(rr)
+inspect(rr)
 var e = createStub("Echo", rr)
 alert(e.echo("한글테스트"))
+alert(e.concat(["수인", "현옥"]))
+e.dispose()
 
 //req = new XMLHttpRequest()
 //req.open("POST", "http://192.168.10.3:8080", false)

@@ -456,6 +456,27 @@ void HttpTransport::receive (Port *p)
     tryRead();
 }
 
+void HttpTransport::notifyUnhandledRequest (Port *p)
+{
+    if (p != requestPort) {
+        return;
+    }
+    Request *req = p->requests.front();
+    if (req->returnWriter) {
+        return;
+    }
+
+    // close xhr connection for asynchronous call
+    FILE *f = fdopen(requestFd, "w");
+    fprintf(f, "HTTP/1.1 200 OK\r\n");
+    fprintf(f, "Access-Control-Allow-Origin: *\r\n");
+    fprintf(f, "Content-Type: text/plain\r\n");
+    fprintf(f, "Content-Length: 0\r\n");
+    fprintf(f, "\r\n");
+    fclose(f);
+    requestFd = -1;
+}
+
 /*------ Base64 Encoding Table ------*/
 static const char MimeBase64[] = {
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
