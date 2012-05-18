@@ -242,8 +242,7 @@ class TypeNode
     end
 
     def cname
-        isIntf = package.interfaces.has_key?(name)
-        return "base::Ref<#{to_cpp}> " if isIntf
+        return "base::Ref<#{to_cpp}> " if package.interfaces.has_key?(name)
 
         case name
         when "Map"
@@ -251,7 +250,7 @@ class TypeNode
         when "List"
             "#{to_cpp}<#{subTypes[0].cname}> "
         when "Nullable"
-            if isIntf
+            if package.interfaces.has_key?(subTypes[0].name)
                 "#{to_cpp}<#{subTypes[0].cname}> "
             else
                 "base::ContainerRef<#{subTypes[0].cname}> "
