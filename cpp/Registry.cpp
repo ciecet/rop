@@ -5,45 +5,6 @@ using namespace std;
 using namespace base;
 using namespace rop;
 
-namespace rop {
-
-struct IdStamp {
-    int32_t id;
-    int32_t stamp;
-    IdStamp(int32_t i, int32_t s): id(i), stamp(s) {}
-    IdStamp() {}
-};
-
-template <>
-struct Writer<IdStamp>: Frame {
-    IdStamp &obj;
-    Writer (IdStamp &o): obj(o) {}
-    STATE run (Stack *stack) {
-        int64_t i;
-        BEGIN_STEP();
-        i = obj.id;
-        i = (i<<32) | obj.stamp;
-        TRY_WRITE(int64_t, i, stack);
-        END_STEP();
-    }
-};
-
-template <>
-struct Reader<IdStamp>: Frame {
-    IdStamp &obj;
-    Reader (IdStamp &o): obj(o) {}
-    STATE run (Stack *stack) {
-        int64_t i;
-        BEGIN_STEP();
-        TRY_READ(int64_t, i, stack);
-        obj.id = i >> 32;
-        obj.stamp = i;
-        END_STEP();
-    }
-};
-
-}
-
 struct RegistrySkeleton: SkeletonBase {
     Registry *registry;
 
@@ -52,7 +13,7 @@ struct RegistrySkeleton: SkeletonBase {
     struct __req_getRemote: Request {
         Registry *registry;
         ArgumentsReader<string> args;
-        ReturnWriter<IdStamp> ret;
+        ReturnWriter<int32_t> ret;
         __req_getRemote(Registry *reg): registry(reg) {
             argumentsReader = &args;
             returnWriter = &ret;
@@ -69,8 +30,8 @@ struct RegistrySkeleton: SkeletonBase {
                 return;
             }
             SkeletonBase *skel = registry->getSkeleton(iter->second.get());
-            skel->stamp++;
-            ret.get<IdStamp>(0) = IdStamp(skel->id, skel->stamp);
+            skel->count++;
+            ret.get<int32_t>(0) = skel->id;
             ret.index = 0;
             l.debug("found %08x(%d)\n", skel, skel->id);
         }
@@ -87,10 +48,11 @@ struct RegistrySkeleton: SkeletonBase {
         void call () {
             Log l("notifyRemoteDestroy ");
             int32_t id = -args.get<int32_t>(0); // reverse local<->remote
-            int32_t stamp = args.get<int32_t>(1);
+            int32_t count = args.get<int32_t>(1);
 
             SkeletonBase *skel = registry->skeletons[id];
-            if (skel->stamp > stamp) {
+            skel->count -= count;
+            if (skel->count) {
                 l.debug("Skipped skeleton deletion.\n");
                 return;
             }
@@ -125,22 +87,24 @@ Remote *Registry::getRemote (string objname)
     req.args[0] = &arg0;
     p->writer.push(&req);
 
-    ReturnReader<IdStamp> ret;
+    ReturnReader<int32_t> ret;
     p->sendAndWait(&ret); // may throw exception
-    IdStamp is = ret.get<IdStamp>(0);
-    Remote *r = getRemote(-is.id); // reverse local<->remote
-    r->stamp = is.stamp;
+
+    pthread_mutex_lock(&transport->monitor);
+    Remote *r = getRemote(-ret.get<int32_t>(0)); // reverse local<->remote
+    r->count++;
+    pthread_mutex_unlock(&transport->monitor);
     return r;
 }
 
-void Registry::notifyRemoteDestroy (int32_t id, int32_t stamp)
+void Registry::notifyRemoteDestroy (int32_t id, int32_t count)
 {
     remotes.erase(id);
 
     Port *p = transport->getPort(0);
 
     Writer<int32_t> arg0(id);
-    Writer<int32_t> arg1(stamp);
+    Writer<int32_t> arg1(count);
     RequestWriter<2> req(0x1<<6, 0, 1);
     req.args[0] = &arg0;
     req.args[1] = &arg1;
@@ -174,7 +138,7 @@ SkeletonBase *Registry::getSkeleton (Interface *obj)
     if (!skel) {
         skel = obj->createSkeleton();
         skel->id = nextSkeletonId++;
-        skel->stamp = 0;
+        skel->count = 0;
         skeletons[skel->id] = skel;
     }
     return skel;

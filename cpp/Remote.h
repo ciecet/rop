@@ -545,9 +545,9 @@ typedef base::Ref<Remote> RemoteRef;
  */
 struct SkeletonBase: base::RefCounted<SkeletonBase> {
     int32_t id; // positive.
-    int32_t stamp;
+    int32_t count;
     InterfaceRef object;
-    SkeletonBase (Interface *o): stamp(0), object(o) {}
+    SkeletonBase (Interface *o): count(0), object(o) {}
     virtual ~SkeletonBase () {}
     virtual Request *createRequest (int methodIndex) = 0;
 };
@@ -579,7 +579,7 @@ struct Registry {
 
     /**
      * Create skeleton of this registry.
-     * serves getRemote(id), notifyRemoteDestroy(id, stamp)
+     * serves getRemote(id), notifyRemoteDestroy(id, count)
      */
     SkeletonBase *createSkeleton ();
 
@@ -605,7 +605,7 @@ struct Registry {
      * Notifies to the remote peer that given remote object was no longer
      * used by local.
      */
-    void notifyRemoteDestroy (int32_t id, int32_t stamp);
+    void notifyRemoteDestroy (int32_t id, int32_t count);
 
     /**
      * Returns skeleton object identified by id.
@@ -772,11 +772,12 @@ struct Request {
  */
 struct Remote: base::RefCounted<Remote> {
     int32_t id; // negative
-    int32_t stamp;
+    int32_t count;
     Registry *registry;
+    Remote (): count(0) {}
     ~Remote () {
         if (registry) {
-            registry->notifyRemoteDestroy(id, stamp);
+            registry->notifyRemoteDestroy(id, count);
         }
     }
 };
@@ -876,16 +877,14 @@ struct ReturnReader: Return {
     }
 
     STATE run (base::Stack *stack) {
-        BEGIN_STEP();
-        TRY_READ(int32_t, index, stack);
         if (index == -1) {
             return COMPLETE;
         }
 
-        NEXT_STEP();
+        BEGIN_STEP();
         stack->push(tuple.items[index]->frame);
-        value = tuple.items[index]->value;
         CALL();
+        value = tuple.items[index]->value;
 
         END_STEP();
     }
@@ -921,12 +920,9 @@ struct ReturnWriter: Return {
     STATE run (base::Stack *stack) {
         BEGIN_STEP();
         {
-            int8_t messageHeader = 0x3<<6;
+            int8_t messageHeader = 0x3<<6 | (index&63);
             TRY_WRITE(int8_t, messageHeader, stack);
         }
-
-        NEXT_STEP();
-        TRY_WRITE(int32_t, index, stack);
         if (index == -1) {
             return COMPLETE;
         }
@@ -981,7 +977,7 @@ template <typename T>
 struct InterfaceReader: base::Frame {
     base::Ref<T> &object;
     int32_t id;
-    int32_t stamp;
+    int32_t count;
     InterfaceReader (base::Ref<T> &o): object(o) {}
     STATE run (base::Stack *stack) {
         BEGIN_STEP();
@@ -993,11 +989,9 @@ struct InterfaceReader: base::Frame {
                     static_cast<PortStack*>(stack)->port->transport->registry->
                             getSkeleton(id)->object.get());
         } else {
-            NEXT_STEP();
-            TRY_READ(int32_t, stamp, stack);
             Remote *r = static_cast<PortStack*>(stack)->port->transport->
                     registry->getRemote(id);
-            r->stamp = stamp;
+            r->count++;
             object = new Stub<T>();
             object->remote = r;
         }
@@ -1021,13 +1015,10 @@ struct InterfaceWriter: base::Frame {
         } else {
             skeleton = static_cast<PortStack*>(stack)->port->
                     transport->registry->getSkeleton(object.get());
-            skeleton->stamp++;
+            skeleton->count++;
 
             NEXT_STEP();
             TRY_WRITE(int32_t, skeleton->id, stack);
-
-            NEXT_STEP();
-            TRY_WRITE(int32_t, skeleton->stamp, stack);
         }
         END_STEP();
     }

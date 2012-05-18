@@ -123,8 +123,13 @@ struct MessageReader: Frame {
                 return ABORTED;
             }
             port->returns.pop_front();
-            stack->push(ret);
-            CALL();
+            if ((messageHead & 63) == 63) {
+                // initially -1. ret->index = -1;
+            } else {
+                ret->index = messageHead & 63;
+                stack->push(ret);
+                CALL();
+            }
             ret->isValid = true;
             // TODO: notify that return value is available. (for future)
             pthread_cond_signal(&port->wakeCondition);
@@ -241,7 +246,10 @@ bool Port::processRequest () {
     requests.pop_front();
     lastRequest = 0;
     
-    pthread_mutex_unlock(&transport->monitor);
+    // 0-port is for system use. So, don't leave monitor
+    if (id) {
+        pthread_mutex_unlock(&transport->monitor);
+    }
 
     l.debug("calling!!! %08x\n", req);
     int otid = rpcThreadId;
@@ -250,7 +258,9 @@ bool Port::processRequest () {
     req->call();
     rpcThreadId = otid;
 
-    pthread_mutex_lock(&transport->monitor);
+    if (id) {
+        pthread_mutex_lock(&transport->monitor);
+    }
 
     if (lreq) {
         delete lreq;

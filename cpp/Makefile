@@ -1,10 +1,16 @@
 TARGET=test
 
-srcs = $(wildcard *.cpp)
+srcs = $(wildcard *Transport.cpp Registry.cpp)
 headers = $(wildcard *.h)
 
-$(TARGET): $(srcs) $(headers)
-	clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
+all: $(TARGET)
+
+test: $(srcs) $(headers) test.cpp
+	clang++ -O2 -g -o $@ $(srcs) test.cpp -lpthread 2>&1
+	#clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
+
+webserver: $(srcs) $(headers) webserver.cpp
+	clang++ -O2 -g -o $@ $(srcs) webserver.cpp -lpthread 2>&1
 	#clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
 
 .PHONY: run grun
