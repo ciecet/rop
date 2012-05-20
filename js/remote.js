@@ -283,10 +283,10 @@ var StructCodec = [
     function (type, obj, buf, ret) {
         var i = 1
         var writeNext = function() {
-            if (i >= fields.length) return ret();
+            if (i >= type.length) return ret();
             var j = i
             i += 2
-            return writeAs(type[j], obj[type[j+1]], writeNext)
+            return writeAs(type[j], obj[type[j+1]], buf, writeNext)
         }
         return writeNext();
     }
@@ -350,7 +350,7 @@ var InterfaceCodec = [
         if (obj.isStub) {
             return writeAs(I32, obj.id, ret)
         }
-        skel = buf.port.transport.registry.getSkeleton(obj)
+        skel = buf.port.registry.getSkeleton(obj)
         skel.count++
         return writeAs(I32, skel.id, buf, ret)
     }
@@ -388,7 +388,7 @@ Types.EchoCallback = [InterfaceCodec,
 Types.Echo = [InterfaceCodec,
     "echo", [STRING], [STRING],
     "concat", [[ListCodec, STRING]], [STRING],
-    "touchmenot", undefined, ["TestException"],
+    "touchmenot", undefined, [VOID, "TestException"],
     "recursiveEcho", [STRING, "EchoCallback"], [VOID],
     "hello", ["Person"], [VOID]
 ]
@@ -431,7 +431,7 @@ var writeRequest = function (buf, header, oid, mid, args, argTypes) {
 var createStubMethod = function(index, argTypes, retTypes) {
     return function() {
         var args = arguments
-        var p = this.remote.registry.transport.getPort()
+        var p = this.remote.registry.getPort()
         var self = this
 
         // async call
@@ -492,18 +492,20 @@ var Request = defineClass({
         this.object = obj
         this.method = method
         this.argTypes = argTypes
-        this.ret = new Return(retTypes)
+        if (retTypes) {
+            this.ret = new Return(retTypes)
+        }
 
-        this.messageHeader = undefined
+        this.messageHead = undefined
         this.args = undefined
     },
-    readArguments: function(buf) {
-        if (this.argTypes === undefined) return
+    readArguments: function(buf, ret) {
+        if (this.argTypes === undefined) return ret()
         var i = 0
         this.args = []
         var self = this
         var readNext = function() {
-            if (i >= self.argTypes.length) return
+            if (i >= self.argTypes.length) return ret()
             return readAs(self.argTypes[i], buf, function(arg) {
                 self.args[i++] = arg
                 return readNext
@@ -512,6 +514,15 @@ var Request = defineClass({
         return readNext()
     },
     call: function() {
+        if (!this.ret) {
+            try {
+                this.object[this.method].apply(this.object, this.args)
+            } catch (e) {
+                console.error("Failed to call async method:"+this.method)
+            }
+            return
+        }
+
         try {
             this.ret.value = this.object[this.method].apply(this.object,
                     this.args)
@@ -566,6 +577,8 @@ var Remote = defineClass({
     }
 })
 
+var rpcThreadId = undefined
+
 var Registry = defineClass({
     init: function() {
         this.nextSkeletonId = 1
@@ -574,85 +587,8 @@ var Registry = defineClass({
         this.skeletons = {}
         this.skeletonByExportable = {}
         this.transport = undefined
-    },
-    createSkeleton: function() {},
-    registerExportable: function(name, exp) {
-        this.exportables[name] = exp
-    },
-    getRemote: function(id) {
-        if (id.constructor === Number) {
-            r = this.remotes[id]
-            if (r === undefined) {
-                r = new Remote()
-                r.id = id
-                r.registry = this
-                this.remotes[id] = r
-            }
-            return r
-        } else {
-            var p = this.transport.getPort()
-
-            p.writer = function(buf) {
-                return writeRequest(buf, 0, 0, 0, [id], [STRING])
-            }
-            var ret = new Return([I32])
-            p.sendAndWait(ret)
-            if (ret.index === 0) {
-                var r = this.getRemote(-ret.value)
-                r.count++
-                return r
-            } else {
-                throw ret.value
-            }
-        }
-    },
-    notifyRemoteDestroy: function(id, count) {
-        var p = this.transport.getPort(0)
-        var args = arguments
-        p.writer = function(buf) {
-            return writeRequest(buf, 1<<6, 0, 1, args, [I32, I32])
-        }
-        p.send()
-        this.remotes[id].registry = undefined
-        delete this.remotes[id]
-    },
-    getSkeleton: function(id) {
-        if (id.constructor === Number) {
-            return this.skeletons[id]
-        } else {
-            var skel = this.skeletonByExportable[id]
-            if (skel === undefined) {
-                skel = id.createSkeleton()
-                skel.id = this.nextSkeletonId++
-                skeletons[skel.id] = skel
-                skeletonByExportable[id] = skel
-            }
-            return skel
-        }
-    }
-})
-
-var rpcThreadId = undefined
-
-// Due to the limitation from javascript/browser,
-// Transport is the only descrete implementation,
-// which uses both websocket and xmlhttprequest.
-var Transport = defineClass({
-    init: function(url) {
-        this.registry = new Registry()
-        this.registry.transport = this
 
         this.ports = {}
-
-        this.inBuffer = new Buffer()
-        this.outBuffer = new Buffer()
-        this.requestBuffer = new Buffer()
-        this.inPort = undefined
-        this.writeInPort = undefined
-        this.readOutPort = undefined
-
-        this.url = url
-        // open websocket
     },
     getPort: function(pid) {
         if (pid === undefined) {
@@ -672,29 +608,87 @@ var Transport = defineClass({
             delete this.ports[p.id]
         }
     },
-    send: function(p) {
-        // TODO: send request via websocket
+    createSkeleton: function() {},
+    registerExportable: function(name, exp) {
+        this.exportables[name] = exp
+    },
+    getRemote: function(id) {
+        if (id.constructor === Number) {
+            r = this.remotes[id]
+            if (r === undefined) {
+                r = new Remote()
+                r.id = id
+                r.registry = this
+                this.remotes[id] = r
+            }
+            return r
+        } else {
+            var p = this.getPort()
 
-        var msg = []
-        buf = this.requestBuffer
-        buf.write((p.id >> 24) & 0xff)
-        buf.write((p.id >> 16) & 0xff)
-        buf.write((p.id >> 8) & 0xff)
-        buf.write(p.id & 0xff)
-        w = function() { return p.writer(buf) }
-        while (w) {
-            w = this.runCont(w)
-            while (buf.size > 0) {
-                msg.push(buf.read())
+            p.writer = function(buf) {
+                return writeRequest(buf, 0, 0, 0, [id], [STRING])
+            }
+            var ret = new Return([I32])
+            p.sendAndWait(ret)
+            if (ret.index === 0) {
+                var r = this.getRemote(-ret.value)
+                r.count++
+                return r
+            } else {
+                throw ret.value
             }
         }
+    },
+    notifyRemoteDestroy: function(id, count) {
+        var p = this.getPort(0)
+        var args = arguments
+        p.writer = function(buf) {
+            return writeRequest(buf, 1<<6, 0, 1, args, [I32, I32])
+        }
+        p.send()
+        this.remotes[id].registry = undefined
+        delete this.remotes[id]
+    },
+    getSkeleton: function(id) {
+        if (id.constructor === Number) {
+            return this.skeletons[id]
+        } else {
+            var skel = this.skeletonByExportable[id]
+            if (skel === undefined) {
+                if (id.name.constructor !== String) {
+                    throw "Cannot create skeleton from unnamed object"
+                }
+                skel = new Skeleton(Types[id.name], id)
+                skel.id = this.nextSkeletonId++
+                this.skeletons[skel.id] = skel
+                this.skeletonByExportable[id] = skel
+            }
+            return skel
+        }
+    },
+    setTransport: function(trans) {
+        this.transport = trans
+        if (trans) {
+            trans.registry = this
+        }
+    }
+})
 
-        msg = encode64(String.fromCharCode.apply(String, msg))
+var Transport = defineClass({
+    init: function(url) {
+        this.url = url
 
-        req = new XMLHttpRequest()
-        req.open("POST", this.url, false)
-        req.setRequestHeader("Content-Type", "text/plain")
-        req.send(msg)
+        this.registry = undefined
+        this.inBuffer = new Buffer()
+        this.outBuffer = new Buffer()
+        this.requestBuffer = new Buffer()
+        this.inPort = undefined
+        this.writeInPort = undefined
+        this.readOutPort = undefined
+
+        // open websocket
+    },
+    send: function(p) {
     },
     sendAndReceive: function(p) {
         // send request and wait for response via xmlhttprequest
@@ -702,6 +696,7 @@ var Transport = defineClass({
         // construct request message from port
         var msg = []
         buf = this.requestBuffer
+        buf.port = p
         buf.write((p.id >> 24) & 0xff)
         buf.write((p.id >> 16) & 0xff)
         buf.write((p.id >> 8) & 0xff)
@@ -751,8 +746,8 @@ var Transport = defineClass({
 })
 
 var Port = defineClass({
-    init: function(trans) {
-        this.transport = trans
+    init: function(reg) {
+        this.registry = reg
         this.id = undefined
         this.returns = []
         this.requests = []
@@ -762,18 +757,18 @@ var Port = defineClass({
     },
     send: function(ret) {
         if (ret) this.returns.push(ret)
-        this.transport.send(this)
-        this.transport.releasePort(this)
+        this.registry.transport.send(this)
+        this.registry.releasePort(this)
     },
     sendAndWait: function(ret) {
         this.returns.push(ret)
         do {
-            this.transport.sendAndReceive(this)
+            this.registry.transport.sendAndReceive(this)
             if (this.requests.length > 0) {
-                processRequest()
+                this.processRequest()
             }
         } while (ret.index === undefined)
-        this.transport.releasePort(this)
+        this.registry.releasePort(this)
     },
     processRequest: function() {
         var req = this.requests.pop()
@@ -787,11 +782,10 @@ var Port = defineClass({
         rpcThreadId = otid
 
         lastRequest = req
-        if (req.ret.index !== undefined) {
-            this.writer = new Task(function() {
-            })
-            
-            transport.send(req.ret)
+        if (req.ret) {
+            this.writer = function(buf) {
+                return req.ret.write(buf, function() {})
+            }
         }
     },
     isActive: function() {
@@ -822,10 +816,11 @@ var Port = defineClass({
                     objectId = -objectId
                     if (objectId < 0) throw new Interrupt("ABORTED")
                     return readAs(I16, buf, function(methodIndex) {
-                        var skel = self.transport.registry.getSkeleton(objectId)
+                        var skel = self.registry.getSkeleton(objectId)
                         if (!skel) throw new Interrupt("ABORTED")
-                        var req = new Request(skel.object,
-                                skel.methods[methodIndex])
+                        var base = methodIndex * 3 + 1
+                        var req = new Request(skel.object, skel.type[base],
+                                skel.type[base+1], skel.type[base+2])
                         req.messageHead = messageHead
                         return req.readArguments(buf, function() {
                             console.log("Got request:"+req)
@@ -848,12 +843,12 @@ var Return = defineClass({
         var idx = messageHead & 63
         this.index = (idx == 63) ? -1 : idx
 
-        if (!this.returnTypes[idx]) {
+        if (!this.returnTypes[this.index]) {
             return ret(this)
         }
 
         var self = this
-        return readAs(this.returnTypes[idx], buf, function(r) {
+        return readAs(this.returnTypes[this.index], buf, function(r) {
             self.value = r
             return ret(self)
         })
@@ -869,13 +864,28 @@ var Return = defineClass({
     }
 })
 
-var trans = new Transport("http://10.12.0.7:8080")
-var reg = trans.registry
+var reg = new Registry()
+reg.setTransport(new Transport("http://10.12.0.7:8080"))
 var rr = reg.getRemote("Echo")
 var e = createStub("Echo", rr)
-alert(e.echo("한글테스트"))
-alert(e.concat(["수인", "현옥"]))
-e.dispose()
+//alert(e.echo("한글테스트"))
+//alert(e.concat(["수인", "현옥"]))
+//try {
+//    e.touchmenot()
+//} catch (ex) {
+//    inspect(ex)
+//}
+
+var ec = new defineClass({
+    name: "EchoCallback",
+    call: function(msg) {
+        alert("got "+msg)
+    }
+})
+//e.recursiveEcho("Hello there!", new ec())
+e.hello({name:"Sooin", callback:new ec()})
+
+//e.dispose()
 
 //req = new XMLHttpRequest()
 //req.open("POST", "http://192.168.10.3:8080", false)
