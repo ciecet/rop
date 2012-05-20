@@ -6,7 +6,7 @@ headers = $(wildcard *.h)
 all: $(TARGET)
 
 test: $(srcs) $(headers) test.cpp
-	clang++ -O0 -g -o $@ $(srcs) test.cpp -lpthread 2>&1
+	clang++ -O2 -g -o $@ $(srcs) test.cpp -lpthread 2>&1
 	#clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
 
 htest: $(srcs) $(headers) htest.cpp

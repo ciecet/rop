@@ -375,24 +375,6 @@ I32 = Types["i32"]
 STRING = Types["String"]
 VOID = Types["void"]
 
-Types.Person = [StructCodec,
-    STRING, "name",
-    "EchoCallback", "callback",
-]
-Types.TestException = [ExceptionCodec, "TestException",
-    [NullableCodec, I32], "i"
-]
-Types.EchoCallback = [InterfaceCodec,
-    "call", [STRING], undefined // async
-]
-Types.Echo = [InterfaceCodec,
-    "echo", [STRING], [STRING],
-    "concat", [[ListCodec, STRING]], [STRING],
-    "touchmenot", undefined, [VOID, "TestException"],
-    "recursiveEcho", [STRING, "EchoCallback"], [VOID],
-    "hello", ["Person"], [VOID]
-]
-
 var readAs = function (type, buf, ret) {
     if (type.constructor === String) {
         type = Types[type]
@@ -863,32 +845,3 @@ var Return = defineClass({
         })
     }
 })
-
-var reg = new Registry()
-reg.setTransport(new Transport("http://10.12.0.7:8080"))
-var rr = reg.getRemote("Echo")
-var e = createStub("Echo", rr)
-//alert(e.echo("한글테스트"))
-//alert(e.concat(["수인", "현옥"]))
-//try {
-//    e.touchmenot()
-//} catch (ex) {
-//    inspect(ex)
-//}
-
-var ec = new defineClass({
-    name: "EchoCallback",
-    call: function(msg) {
-        alert("got "+msg)
-    }
-})
-//e.recursiveEcho("Hello there!", new ec())
-e.hello({name:"Sooin", callback:new ec()})
-
-//e.dispose()
-
-//req = new XMLHttpRequest()
-//req.open("POST", "http://192.168.10.3:8080", false)
-//req.setRequestHeader("Content-Type", "text/plain")
-//req.send("hi there!")
-//alert("got "+req.responseText)
