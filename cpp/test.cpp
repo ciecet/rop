@@ -102,7 +102,6 @@ void test1 ()
         p.name = "Sooin";
         p.callback = cb;
         e.hello(p);
-        sleep(1);
     } else {
         Log l("server ");
         // server
@@ -112,6 +111,7 @@ void test1 ()
         l.info("enter loop...\n");
         trans.loop();
     }
+    sleep(1);
 }
 
 int main ()

@@ -418,8 +418,7 @@ packages.each { |pkg|
                 f.puts "    #{rt.cname} #{m.name} (#{
                         m.argumentTypes.map{|t|t.cnamearg}.join(", ")
                         }) {"
-                f.puts "        Transport *trans = remote->registry->transport;"
-                f.puts "        Port *__p = trans->getPort();"
+                f.puts "        Port *__p = remote->registry->getPort();"
                 f.puts ""
                 m.argumentTypes.each { |t|
                     f.puts "        Writer<#{t.cname}> __arg_#{t.variable}(#{t.variable});"

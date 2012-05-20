@@ -11,19 +11,25 @@ struct SocketTransport: Transport {
     Buffer inBuffer;
     Port *inPort;
     Buffer outBuffer;
-    pthread_cond_t writableCondition;
+    pthread_cond_t writable;
     bool isSending;
     pthread_t loopThread;
     bool isLooping;
     
-    SocketTransport (Registry &r, int i, int o): Transport(r),
+    SocketTransport (Registry &r, int i, int o):
             inFd(i), outFd(o), inPort(0), isSending(false), isLooping(false) {
-        pthread_cond_init(&writableCondition, 0);
+        pthread_cond_init(&writable, 0);
+        r.setTransport(this);
     }
     ~SocketTransport () {
-        pthread_cond_destroy(&writableCondition);
+        if (registry) {
+            registry->setTransport(0);
+        }
+
+        pthread_cond_destroy(&writable);
         close(inFd);
         close(outFd);
+
     }
 
     void loop (); // handle reading

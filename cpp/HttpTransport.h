@@ -14,18 +14,19 @@ struct HttpTransport: Transport {
     Buffer inBuffer;
     Buffer outBuffer;
     Buffer requestBuffer;
-    pthread_cond_t writableCondition;
+    pthread_cond_t writable;
     pthread_t loopThread;
     bool isLooping;
     bool isSending;
+    bool isKeepAlive;
     
-    HttpTransport (Registry &r, int p): Transport(r), port(p),
+    HttpTransport (int p): port(p),
             websocketFd(-1), requestFd(-1), inPort(0), requestPort(0),
-            isLooping(false), isSending(false) {
-        pthread_cond_init(&writableCondition, 0);
+            isLooping(false), isSending(false), isKeepAlive(false) {
+        pthread_cond_init(&writable, 0);
     }
     ~HttpTransport () {
-        pthread_cond_destroy(&writableCondition);
+        pthread_cond_destroy(&writable);
     }
 
     void loop (); // handle reading & processing the request

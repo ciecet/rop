@@ -40,6 +40,10 @@ struct Buffer {
         return ret;
     }
 
+    unsigned char peek (int i) {
+        return buffer[(offset+i) % BUFFER_SIZE];
+    }
+
     void write (unsigned char d) {
         buffer[(offset+size) % BUFFER_SIZE] = d;
         size++;
@@ -76,6 +80,9 @@ struct Buffer {
     }
 };
 
+/**
+ * Stack extension for reader/writer frames
+ */
 struct Port;
 struct PortStack: base::Stack {
     Port *port;
@@ -97,8 +104,8 @@ template <typename T> struct Writer {
     Writer (T &o) {}
 };
 
-// Utility macros for convenient management of step variable.
-// TRY_READ/TRY_WRITE should be used only for primitive types.
+// Utility macros for easy management of step variable.
+// TRY_READ/TRY_WRITE should be used only for primitive types
 #define BEGIN_STEP() switch (step) { case 0:
 #define TRY_READ(type,var,stack) do {\
     if (Reader<type>(var).run(stack) == STOPPED) {\
@@ -124,156 +131,91 @@ struct Writer<void>: base::Frame {
     STATE run (base::Stack *stack) { return COMPLETE; }
 };
 
-template<>
-struct Reader<int8_t>: base::Frame {
-    int8_t &obj;
-    Reader (int8_t &o): obj(o) {}
-
+template<typename T>
+struct IntReader: base::Frame {
+    T &obj;
+    IntReader (T &o): obj(o) {}
     STATE run (base::Stack *stack) {
         Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->size < 1) return STOPPED;
-        obj = buf->read();
+        if (buf->size < sizeof(T)) return STOPPED;
+        T t = buf->peek(0);
+        for (int i = 1; i < sizeof(T); i++) {
+            t = (t << 8) + buf->peek(i);
+        }
+        buf->drop(sizeof(T));
+        obj = t;
         return COMPLETE;
     }
 };
 
-template<> struct Writer<int8_t>: base::Frame {
-    int8_t &obj;
-    Writer (int8_t &o): obj(o) {}
-
+template<typename T>
+struct IntWriter: base::Frame {
+    T &obj;
+    IntWriter (T &o): obj(o) {}
     STATE run (base::Stack *stack) {
         Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->margin() < 1) return STOPPED;
-        buf->write(obj);
+        if (buf->margin() < sizeof(T)) return STOPPED;
+        T t = obj;
+        for (int i = (sizeof(T) - 1) * 8; i > 0; i -= 8) {
+            buf->write(t >> i);
+        }
+        buf->write(t);
         return COMPLETE;
     }
 };
 
-template<> struct Reader<int16_t>: base::Frame {
-    int16_t &obj;
-    Reader (int16_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->size < 2) return STOPPED;
-        int i = buf->read();
-        i = (i<<8) + buf->read();
-        obj = i;
-        return COMPLETE;
-    }
+template<> struct Reader<int8_t>: IntReader<int8_t> {
+    Reader (int8_t &o): IntReader<int8_t>(o) {}
 };
-
-template<> struct Writer<int16_t>: base::Frame {
-    int16_t &obj;
-    Writer (int16_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->margin() < 2) return STOPPED;
-        int i = obj;
-        buf->write(i>>8);
-        buf->write(i);
-        return COMPLETE;
-    }
+template<> struct Writer<int8_t>: IntWriter<int8_t> {
+    Writer (int8_t &o): IntWriter<int8_t>(o) {}
 };
-
-template<> struct Reader<int32_t>: base::Frame {
-    int32_t &obj;
-    Reader (int32_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->size < 4) return STOPPED;
-        int i = buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        obj = i;
-        return COMPLETE;
-    }
+template<> struct Reader<int16_t>: IntReader<int16_t> {
+    Reader (int16_t &o): IntReader<int16_t>(o) {}
 };
-
-template<> struct Writer<int32_t>: base::Frame {
-    int32_t &obj;
-    Writer (int32_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->margin() < 4) return STOPPED;
-        int i = obj;
-        buf->write(i>>24);
-        buf->write(i>>16);
-        buf->write(i>>8);
-        buf->write(i);
-        return COMPLETE;
-    }
+template<> struct Writer<int16_t>: IntWriter<int16_t> {
+    Writer (int16_t &o): IntWriter<int16_t>(o) {}
 };
-
-template<> struct Reader<int64_t>: base::Frame {
-    int64_t &obj;
-    Reader (int64_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->size < 8) return STOPPED;
-        int64_t i = buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        i = (i<<8) + buf->read();
-        obj = i;
-        return COMPLETE;
-    }
+template<> struct Reader<int32_t>: IntReader<int32_t> {
+    Reader (int32_t &o): IntReader<int32_t>(o) {}
 };
-
-template<> struct Writer<int64_t>: base::Frame {
-    int64_t &obj;
-    Writer (int64_t &o): obj(o) {}
-
-    STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->margin() < 8) return STOPPED;
-        int64_t i = obj;
-        buf->write(i>>56);
-        buf->write(i>>48);
-        buf->write(i>>40);
-        buf->write(i>>32);
-        buf->write(i>>24);
-        buf->write(i>>16);
-        buf->write(i>>8);
-        buf->write(i);
-        return COMPLETE;
-    }
+template<> struct Writer<int32_t>: IntWriter<int32_t> {
+    Writer (int32_t &o): IntWriter<int32_t>(o) {}
+};
+template<> struct Reader<int64_t>: IntReader<int64_t> {
+    Reader (int64_t &o): IntReader<int64_t>(o) {}
+};
+template<> struct Writer<int64_t>: IntWriter<int64_t> {
+    Writer (int64_t &o): IntWriter<int64_t>(o) {}
 };
 
 template<> struct Reader<std::string>: base::Frame {
 
     std::string &obj;
-    int length;
+    int remain;
 
     Reader (std::string &o): obj(o) {}
 
     STATE run (base::Stack *stack) {
-        Buffer *buf;
+        Buffer *buf = static_cast<PortStack*>(stack)->buffer;
 
         // read size
         BEGIN_STEP();
-        TRY_READ(int32_t, length, stack);
+        TRY_READ(int32_t, remain, stack);
         obj.clear();
-        obj.reserve(length);
+        obj.reserve(remain);
 
-        // read each char
+        // read chars
         NEXT_STEP();
-        buf = static_cast<PortStack*>(stack)->buffer;
-        while (length) {
-            if (!buf->size) {
+        {
+            int n = (remain > buf->size) ? buf->size : remain;
+            for (int i = 0; i < n; i++) {
+                obj.push_back(static_cast<char>(buf->peek(i)));
+            }
+            buf->drop(n);
+            if ((remain -= n) > 0) {
                 return STOPPED;
             }
-            obj.push_back(static_cast<char>(buf->read()));
-            length--;
         }
 
         END_STEP();
@@ -288,22 +230,23 @@ template<> struct Writer<std::string>: base::Frame {
     Writer (std::string &o): obj(o) {}
 
     STATE run (base::Stack *stack) {
-        Buffer *buf;
+        Buffer *buf = static_cast<PortStack*>(stack)->buffer;
 
         // write size 
         BEGIN_STEP();
-        i = obj.size();
+        i = obj.length();
         TRY_WRITE(int32_t, i, stack);
         i = 0;
 
         // write chars
         NEXT_STEP();
-        buf = static_cast<PortStack*>(stack)->buffer;
-        while (i < obj.length()) {
-            if (!buf->margin()) {
+        {
+            int n = (obj.length() - i > buf->margin()) ?
+                    i + buf->margin() : obj.length();
+            while (i < n) buf->write(obj.at(i++));
+            if (i < obj.length()) {
                 return STOPPED;
             }
-            buf->write(obj.at(i++));
         }
 
         END_STEP();
@@ -482,11 +425,9 @@ struct Reader<base::ContainerRef<T> >: base::Frame {
     base::ContainerRef<T> &obj;
     Reader (base::ContainerRef<T> &o): obj(o) {}
     STATE run (base::Stack *stack) {
-        Log l("readcontref ");
         int8_t i;
         BEGIN_STEP();
         TRY_READ(int8_t, i, stack);
-        l.debug("i:%d\n", i);
         if (i) {
             obj = new base::Container<T>();
             stack->push(new (stack->allocate(sizeof(Reader<T>))) Reader<T>(*obj));
@@ -505,7 +446,6 @@ struct Writer<base::ContainerRef<T> >: base::Frame {
 
     STATE run (base::Stack *stack) {
         int8_t i;
-        Log l("writecontref ");
         BEGIN_STEP();
         if (obj) {
             i = 1;
@@ -554,18 +494,23 @@ struct SkeletonBase: base::RefCounted<SkeletonBase> {
 
 /**
  * Container of whole objects which are related to remote peer.
- * This holds skeletons and remotes.
+ * This holds skeletons and remotes and ports.
  */
 struct Registry {
     int nextSkeletonId;
-    std::map<std::string,InterfaceRef> exportables; // root objects exported to peer.
-    std::map<int,Remote*> remotes; // remote handles shared by stub objects
-    std::map<int,SkeletonBase*> skeletons; // skeletons locating actual local objects.
-    std::map<Interface*,SkeletonBase*> skeletonByExportable; // local obj -> skel
+    // root objects exported to peer.
+    std::map<std::string,InterfaceRef> exportables;
+    std::map<int,Remote*> remotes; // handles shared by stub objects
+    std::map<int,SkeletonBase*> skeletons; // locates local objects.
+    std::map<Interface*,SkeletonBase*> skeletonByExportable; // skel cache
+    std::map<int,Port*> ports; // active ports
+    std::vector<Port*> freePorts; // free ports for reuse
+    pthread_mutex_t monitor;
 
     Transport *transport; // connection to peer.
 
     Registry (): nextSkeletonId(1) {
+        pthread_mutex_init(&monitor, 0);
         SkeletonBase *skel = createSkeleton();
         skel->id = 0;
         skeletons[0] = skel;
@@ -573,9 +518,15 @@ struct Registry {
 
     ~Registry ();
 
-    void setTransport (Transport *trans) {
-        transport = trans;
+    void lock () {
+        pthread_mutex_lock(&monitor);
     }
+
+    void unlock () {
+        pthread_mutex_unlock(&monitor);
+    }
+
+    void setTransport (Transport *trans);
 
     /**
      * Create skeleton of this registry.
@@ -619,23 +570,6 @@ struct Registry {
      * If the skeleton is missing, this create the one.
      */
     SkeletonBase *getSkeleton (Interface *obj);
-};
-
-/**
- * Abstraction of rpc io & thread model.
- * Subclass of this should implement missing methods which are
- * platform-dependent & policy-dependent.
- */
-struct Transport {
-    Registry *registry;
-    std::map<int,Port*> ports;
-    std::vector<Port*> freePorts;
-    pthread_mutex_t monitor;
-    Transport (Registry &r): registry(&r) {
-        registry->setTransport(const_cast<Transport*>(this));
-        pthread_mutex_init(&monitor, 0);
-    }
-    virtual ~Transport ();
 
     /** Returns a port with monitor lock held. */
     Port *getPort (int pid);
@@ -649,20 +583,7 @@ struct Transport {
     /** Release monitor and finish using the port */
     void releasePort (Port *p);
 
-    /** synchronously send messages provided from the port. called by port. */
-    virtual void send (Port *p) = 0;
-
-    /** Wait until given port gets (partial) messages. called by port. */
-    virtual void receive (Port *p) = 0;
-
-    /**
-     * Notifies that new request was added in the given port but no thread
-     * was scheduled to run it. Transport is responsible for executing the
-     * requests as soon as possible.
-     */
-    virtual void notifyUnhandledRequest (Port *p) = 0;
-
-protected:
+//protected:
     /**
      * Derived class may need to use getPort() while holding the lock already.
      * This utility is provided for the case recursive lock is not available.
@@ -677,38 +598,46 @@ protected:
 };
 
 /**
- * Virtual duplex channel which represents each queue of incoming/outgoing
- * messages.
+ * Virtual duplex channel which deserialize on reading and serialize on sending.
+ * This also retains call request objects for processing,
+ * and return objects to be notified.
  */
 struct Port {
-    Transport *transport;
     /**
      * Port number. positive value represents that the port was initiated by
      * local thread. negative value means that the port was initiated by 
      * the remote thread.
      */
     int32_t id;
+
+    /**
+     * The registry where this port belongs to.
+     */
+    Registry *registry;
+
     /** waiting returns for remote call. not owned. */
     std::deque<Return*> returns;
+
     /** Pending call request. owned. */
     std::deque<Request*> requests;
+
     /**
      * Last request which was just completed.
      * Also used for call chaining.
      */
     Request *lastRequest;
 
-    PortStack reader;
-    PortStack writer;
+    PortStack writer; // serialize messages to transport stream
+    PortStack reader; // deserialize messages from transport stream
 
     // ready to serve incoming reenterant request
     // until all return value is received.
-    bool canProcessRequests;
-    pthread_cond_t wakeCondition;
+    bool waitingSyncReturn;
+    pthread_cond_t updated;
 
-    Port (Transport *trans): transport(trans), lastRequest(0),
-            reader(this), writer(this), canProcessRequests(false) {
-        pthread_cond_init(&wakeCondition, 0);
+    Port (Registry *reg): registry(reg), lastRequest(0),
+            reader(this), writer(this), waitingSyncReturn(false) {
+        pthread_cond_init(&updated, 0);
     }
 
     virtual ~Port ();
@@ -752,6 +681,30 @@ struct Port {
      * Should be called with monitor lock held. 
      */
     bool isActive ();
+};
+
+/**
+ * Abstraction of rpc io & thread model.
+ * Subclass of this should implement missing methods which are
+ * platform-dependent & policy-dependent.
+ */
+struct Transport {
+    Registry *registry;
+    Transport (): registry(0) {}
+    virtual ~Transport () {}
+
+    /** Wait until messages are fully sent from the port. */
+    virtual void send (Port *p) = 0;
+
+    /** Wait until the port gets messages. May return on partial message */
+    virtual void receive (Port *p) = 0;
+
+    /**
+     * Notifies that new request was added in the given port but no thread
+     * was scheduled to run it. Transport is responsible for executing the
+     * requests as soon as possible.
+     */
+    virtual void notifyUnhandledRequest (Port *p) = 0;
 };
 
 /**
@@ -986,11 +939,11 @@ struct InterfaceReader: base::Frame {
 
         if (id > 0) {
             object = reinterpret_cast<T*>(
-                    static_cast<PortStack*>(stack)->port->transport->registry->
+                    static_cast<PortStack*>(stack)->port->registry->
                             getSkeleton(id)->object.get());
         } else {
-            Remote *r = static_cast<PortStack*>(stack)->port->transport->
-                    registry->getRemote(id);
+            Remote *r = static_cast<PortStack*>(stack)->port->registry->
+                    getRemote(id);
             r->count++;
             object = new Stub<T>();
             object->remote = r;
@@ -1013,8 +966,8 @@ struct InterfaceWriter: base::Frame {
         if (object->remote) {
             TRY_WRITE(int32_t, object->remote->id, stack);
         } else {
-            skeleton = static_cast<PortStack*>(stack)->port->
-                    transport->registry->getSkeleton(object.get());
+            skeleton = static_cast<PortStack*>(stack)->port->registry->
+                    getSkeleton(object.get());
             skeleton->count++;
 
             NEXT_STEP();

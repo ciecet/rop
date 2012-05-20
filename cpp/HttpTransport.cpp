@@ -49,7 +49,7 @@ void HttpTransport::loop ()
             return;
         }
 
-        pthread_mutex_lock(&monitor);
+        registry->lock();
 
         if (FD_ISSET(listenFd, &inSet)) {
             l.info("got message.\n");
@@ -61,21 +61,22 @@ void HttpTransport::loop ()
             if (requestPort) {
                 requestPort->processRequest();
             }
-            pthread_mutex_unlock(&monitor);
+            registry->unlock();
             continue;
         }
 
         // execute processors
-        for (map<int,Port*>::iterator i = ports.begin(); i != ports.end();) {
+        for (map<int,Port*>::iterator i = registry->ports.begin();
+                i != registry->ports.end();) {
             Port *p = i->second;
             if (!p->requests.empty()) {
                 l.info("executing request...\n");
             }
             while (p->processRequest());
             i++;
-            releasePortWithLock(p);
+            registry->releasePortWithLock(p);
         }
-        pthread_mutex_unlock(&monitor);
+        registry->unlock();
     }
 }
 
@@ -151,8 +152,12 @@ void HttpTransport::readRequest ()
                     *cursor = 0;
                     cursor = lineBuf;
                     l.debug("got %s\n", lineBuf);
-                    if (sscanf((char*)lineBuf, "CONTENT-LENGTH:%d", &len) == 1) {
+                    if (sscanf((char*)lineBuf, "CONTENT-LENGTH:%d",
+                            &len) == 1) {
                         l.info("length:%d\n", len);
+                    } else if (strcmp((char*)lineBuf,
+                            "CONNECTION: KEEP-ALIVE") == 0) {
+                        isKeepAlive = true;
                     }
                     continue;
                 }
@@ -183,7 +188,7 @@ void HttpTransport::readRequest ()
         p = (p << 8) + s[i++];
         p = (p << 8) + s[i++];
         p = (p << 8) + s[i++];
-        requestPort = getPortWithLock(-p);
+        requestPort = registry->getPortWithLock(-p);
         l.debug("receiving %d bytes from port:%d\n", len-4, -p);
     }
 
@@ -372,7 +377,7 @@ void HttpTransport::send (Port *p)
 
     while (isSending) {
         l.trace("waiting for lock...\n");
-        pthread_cond_wait(&writableCondition, &monitor);
+        pthread_cond_wait(&writable, &registry->monitor);
     }
     isSending = true;
 
@@ -426,7 +431,7 @@ void HttpTransport::send (Port *p)
     }
 
     isSending = false;
-    pthread_cond_signal(&writableCondition);
+    pthread_cond_signal(&writable);
 }
 
 void HttpTransport::waitReadable ()
@@ -436,9 +441,9 @@ void HttpTransport::waitReadable ()
     FD_ZERO(&inSet);
     FD_SET(websocketFd, &inSet);
 
-    pthread_mutex_unlock(&monitor);
+    registry->unlock();
     pselect(websocketFd+1, &inSet, 0, 0, 0, 0); // care return value?
-    pthread_mutex_lock(&monitor);
+    registry->lock();
 }
 
 void HttpTransport::receive (Port *p)
@@ -447,7 +452,7 @@ void HttpTransport::receive (Port *p)
     if (isLooping) {
         if (!pthread_equal(pthread_self(), loopThread)) {
             l.debug("waiting on condvar for port:%d\n", p->id);
-            pthread_cond_wait(&p->wakeCondition, &monitor);
+            pthread_cond_wait(&p->updated, &registry->monitor);
             return;
         }
     }

@@ -18,8 +18,7 @@ struct Writer<base::Ref<test::EchoCallback> >: InterfaceWriter<test::EchoCallbac
 template<>
 struct Stub<test::EchoCallback>: test::EchoCallback {
     void call (std::string msg) {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         Writer<std::string> __arg_msg(msg);
         RequestWriter<1> req(1<<6, remote->id, 0);

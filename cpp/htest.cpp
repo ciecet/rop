@@ -50,7 +50,8 @@ void serv ()
     // server
     Registry reg;
     reg.registerExportable("Echo", new EchoImpl());
-    HttpTransport trans(reg, 8080);
+    HttpTransport trans(8080);
+    reg.setTransport(&trans);
     l.info("enter loop...\n");
     trans.loop();
 }

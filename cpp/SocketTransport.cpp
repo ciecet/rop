@@ -33,23 +33,25 @@ void SocketTransport::loop ()
             return;
         }
 
-        pthread_mutex_lock(&monitor);
+        registry->lock();
+
         if (FD_ISSET(inFd, &infdset)) {
             l.info("got message.\n");
             tryRead();
         }
 
         // execute processors
-        for (map<int,Port*>::iterator i = ports.begin(); i != ports.end();) {
-            Port *p = i->second;
+        for (map<int,Port*>::iterator i = registry->ports.begin();
+                i != registry->ports.end();) {
+            Port *p = (i++)->second;
             if (!p->requests.empty()) {
                 l.info("executing request...\n");
             }
             while (p->processRequest());
-            i++;
-            releasePortWithLock(p);
+            registry->releasePortWithLock(p);
         }
-        pthread_mutex_unlock(&monitor);
+
+        registry->unlock();
     }
 }
 
@@ -93,7 +95,7 @@ begin_message:
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
-            inPort = getPortWithLock(-p); // reverse local<->remote port id
+            inPort = registry->getPortWithLock(-p); // reverse local<->remote port id
             l.debug("getting port:%d\n", -p);
         }
 
@@ -141,9 +143,9 @@ void SocketTransport::waitWritable ()
         FD_SET(inFd, &expfdset);
     }
 
-    pthread_mutex_unlock(&monitor);
+    registry->unlock();
     int ret = pselect(nfds, &infdset, &outfdset, &expfdset, 0, 0);
-    pthread_mutex_lock(&monitor);
+    registry->lock();
     if (ret <= 0) {
         return;
     }
@@ -162,7 +164,7 @@ void SocketTransport::send (Port *p)
     Log l("flush ");
     while (isSending) {
         l.trace("waiting for lock...\n");
-        pthread_cond_wait(&writableCondition, &monitor);
+        pthread_cond_wait(&writable, &registry->monitor);
     }
     isSending = true;
 
@@ -216,7 +218,7 @@ void SocketTransport::send (Port *p)
     }
 
     isSending = false;
-    pthread_cond_signal(&writableCondition);
+    pthread_cond_signal(&writable);
 }
 
 void SocketTransport::waitReadable ()
@@ -229,9 +231,9 @@ void SocketTransport::waitReadable ()
     FD_SET(inFd, &infdset);
     FD_SET(inFd, &expfdset);
 
-    pthread_mutex_unlock(&monitor);
+    registry->unlock();
     pselect(inFd+1, &infdset, 0, &expfdset, 0, 0); // care return value?
-    pthread_mutex_lock(&monitor);
+    registry->lock();
 }
 
 void SocketTransport::receive (Port *p)
@@ -240,7 +242,7 @@ void SocketTransport::receive (Port *p)
     if (isLooping) {
         if (!pthread_equal(pthread_self(), loopThread)) {
             l.debug("waiting on condvar for port:%d\n", p->id);
-            pthread_cond_wait(&p->wakeCondition, &monitor);
+            pthread_cond_wait(&p->updated, &registry->monitor);
             return;
         }
     }

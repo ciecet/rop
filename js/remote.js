@@ -408,6 +408,7 @@ var writeAs = function (type, obj, buf, ret) {
 }
 
 var writeRequest = function (buf, header, oid, mid, args, argTypes) {
+    alert("requesting "+oid+"."+mid+":"+args)
     var i = 0
     var writeNext = function() {
         if (i >= argTypes.length) return
@@ -445,7 +446,6 @@ var createStubMethod = function(index, argTypes, retTypes) {
 
         // sync call
         p.writer = function(buf) {
-            alert("writing "+self.remote.id+"."+index+":"+args)
             return writeRequest(buf, 0,
                     self.remote.id, index, args, argTypes)
         }
@@ -561,7 +561,6 @@ var Remote = defineClass({
     ref: function() { this.refCount++ },
     deref: function() {
         if (--this.refCount <= 0 && this.registry) {
-            alert('sending')
             this.registry.notifyRemoteDestroy(this.id, this.count)
         }
     }
@@ -691,7 +690,6 @@ var Transport = defineClass({
         }
 
         msg = encode64(String.fromCharCode.apply(String, msg))
-        alert("aysnc sending... "+msg)
 
         req = new XMLHttpRequest()
         req.open("POST", this.url, false)
@@ -717,7 +715,6 @@ var Transport = defineClass({
         }
 
         msg = encode64(String.fromCharCode.apply(String, msg))
-        alert("sending... "+msg)
 
         req = new XMLHttpRequest()
         req.open("POST", this.url, false)
@@ -730,7 +727,6 @@ var Transport = defineClass({
         for (var i in msg) {
             arr.push(msg.charCodeAt(i))
         }
-        inspect(arr)
 
         r = function() { return p.readMessage(buf, function() {}) }
         var i = 0
@@ -738,9 +734,7 @@ var Transport = defineClass({
             while (i < msg.length && buf.margin() > 0) {
                 buf.write(msg.charCodeAt(i++))
             }
-            alert('reading message from buf:'+buf.size)
             r = this.runCont(r)
-            console.log(r)
         }
     },
     runCont: function(cont) {
@@ -778,7 +772,6 @@ var Port = defineClass({
             if (this.requests.length > 0) {
                 processRequest()
             }
-            alert('got return? index:'+ret.index)
         } while (ret.index === undefined)
         this.transport.releasePort(this)
     },
@@ -835,6 +828,7 @@ var Port = defineClass({
                                 skel.methods[methodIndex])
                         req.messageHead = messageHead
                         return req.readArguments(buf, function() {
+                            console.log("Got request:"+req)
                             self.requests.push(req)
                         })
                     })
@@ -878,7 +872,6 @@ var Return = defineClass({
 var trans = new Transport("http://10.12.0.7:8080")
 var reg = trans.registry
 var rr = reg.getRemote("Echo")
-inspect(rr)
 var e = createStub("Echo", rr)
 alert(e.echo("한글테스트"))
 alert(e.concat(["수인", "현옥"]))

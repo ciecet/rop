@@ -25,8 +25,7 @@ struct Writer<base::Ref<test::Echo> >: InterfaceWriter<test::Echo> {
 template<>
 struct Stub<test::Echo>: test::Echo {
     std::string echo (std::string msg) {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         Writer<std::string> __arg_msg(msg);
         RequestWriter<1> req(0<<6, remote->id, 0);
@@ -41,8 +40,7 @@ struct Stub<test::Echo>: test::Echo {
         }
     }
     std::string concat (std::vector<std::string>  msgs) {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         Writer<std::vector<std::string> > __arg_msgs(msgs);
         RequestWriter<1> req(0<<6, remote->id, 1);
@@ -57,8 +55,7 @@ struct Stub<test::Echo>: test::Echo {
         }
     }
     void touchmenot () {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         RequestWriter<0> req(0<<6, remote->id, 2);
         __p->writer.push(&req);
@@ -72,8 +69,7 @@ struct Stub<test::Echo>: test::Echo {
         }
     }
     void recursiveEcho (std::string msg, base::Ref<test::EchoCallback>  cb) {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         Writer<std::string> __arg_msg(msg);
         Writer<base::Ref<test::EchoCallback> > __arg_cb(cb);
@@ -90,8 +86,7 @@ struct Stub<test::Echo>: test::Echo {
         }
     }
     void hello (test::Person &p) {
-        Transport *trans = remote->registry->transport;
-        Port *__p = trans->getPort();
+        Port *__p = remote->registry->getPort();
 
         Writer<test::Person> __arg_p(p);
         RequestWriter<1> req(0<<6, remote->id, 4);
