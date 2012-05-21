@@ -25,111 +25,83 @@ void HttpTransport::loop ()
     isLooping = true;
     loopThread = pthread_self();
 
-    int listenFd;
     struct sockaddr_in servAddr; 
     listenFd = socket(AF_INET, SOCK_STREAM, 0);
     bzero(&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servAddr.sin_port = htons(port);
-    int optval = 1;
-    setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR,&optval,sizeof(optval));
+    {
+        int optval = 1;
+        setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR,&optval,sizeof(optval));
+    }
     if (bind(listenFd, (struct sockaddr*)&servAddr, sizeof(servAddr))) {
         l.error("bind failed ret:%d\n", errno);
     }
-    listen(listenFd, 2);
+    listen(listenFd, 1);
 
+    registry->lock();
     while (true) {
-        fd_set inSet;
-        FD_ZERO(&inSet);
-        FD_SET(listenFd, &inSet);
-
-        l.info("blocked for reading. (listenFd:%d)\n", listenFd);
-        if (pselect(listenFd+1, &inSet, 0, 0, 0, 0) <= 0) {
-            return;
-        }
-
-        registry->lock();
-
-        if (FD_ISSET(listenFd, &inSet)) {
-            l.info("got message.\n");
-
-            struct sockaddr_in clientAddr;
-            socklen_t len = sizeof(clientAddr);
-            requestFd = accept(listenFd, (struct sockaddr*)&clientAddr, &len);
-            readRequest();
-            if (requestPort) {
-                requestPort->processRequest();
-            }
-            registry->unlock();
-            continue;
-        }
-
-        // execute processors
-        for (map<int,Port*>::iterator i = registry->ports.begin();
-                i != registry->ports.end();) {
-            Port *p = i->second;
-            if (!p->requests.empty()) {
-                l.info("executing request...\n");
-            }
-            while (p->processRequest());
-            i++;
-            registry->releasePortWithLock(p);
-        }
-        registry->unlock();
+        handleMessage();
     }
+    registry->unlock();
 }
 
 void HttpTransport::readRequest ()
 {
     int step = 0;
-    unsigned char lineBuf[1024];
+    unsigned char lineBuf[2048];
     unsigned char *cursor = lineBuf;
     string msg;
     int len = 0;
     Log l("xmlHttpRequest ");
 
+    if (xhrBuffer.size) {
+        l.fatal("xhrBuffer is not empty:%d\n", xhrBuffer.size);
+    }
+
     while (step != 3) {
+        l.info("step:%d\n", step);
 
         // fill in buffer
         int r;
-        if (requestBuffer.hasWrappedMargin()) {
+        if (xhrBuffer.hasWrappedMargin()) {
             iovec io[2];
-            io[0].iov_base = requestBuffer.end();
-            io[0].iov_len = requestBuffer.margin() - requestBuffer.offset;
-            io[1].iov_base = requestBuffer.buffer;
-            io[1].iov_len = requestBuffer.offset;
-            r = readv(requestFd, io, 2);
+            io[0].iov_base = xhrBuffer.end();
+            io[0].iov_len = xhrBuffer.margin() - xhrBuffer.offset;
+            io[1].iov_base = xhrBuffer.buffer;
+            io[1].iov_len = xhrBuffer.offset;
+            r = readv(xhrFd, io, 2);
         } else {
-            r = read(requestFd, requestBuffer.end(), requestBuffer.margin());
+            r = read(xhrFd, xhrBuffer.end(), xhrBuffer.margin());
         }
         if (r == 0) {
             // eof
+            l.debug("eof\n");
             break;
         } if (r < 0) {
             // fail or EWOULDBLOCK
+            l.debug("errno:%d\n", errno);
             break;
         }
-        requestBuffer.size += r;
+        xhrBuffer.size += r;
         l.debug("read %d bytes.\n", r);
 
         switch (step) {
         case 0: // read first line
-            while (requestBuffer.size) {
-                char c = requestBuffer.read();
+            while (xhrBuffer.size) {
+                char c = xhrBuffer.read();
                 if (c == '\r') continue;
                 if (c == '\n') {
                     *cursor = 0;
                     cursor = lineBuf;
                     l.debug("got %s\n", lineBuf);
-                    /*
                     if (strncmp((char*)lineBuf, "POST ", 5) != 0) {
-                        close(requestFd);
-                        requestFd = -1;
-                        requestBuffer.reset();
+                        close(xhrFd);
+                        xhrFd = -1;
+                        xhrBuffer.reset();
                         return;
                     }
-                    */
                     step++;
                     break;
                 }
@@ -138,11 +110,12 @@ void HttpTransport::readRequest ()
             if (step == 0) break;
 
         case 1: // read heads
-            while (requestBuffer.size) {
-                char c = requestBuffer.read();
+            while (xhrBuffer.size) {
+                char c = xhrBuffer.read();
                 if (c == '\r') continue;
                 if (c == '\n') {
                     if (cursor == lineBuf) {
+                        // on head end
                         step++;
                         if (len > 0) {
                             msg.reserve(len);
@@ -155,9 +128,6 @@ void HttpTransport::readRequest ()
                     if (sscanf((char*)lineBuf, "CONTENT-LENGTH:%d",
                             &len) == 1) {
                         l.info("length:%d\n", len);
-                    } else if (strcmp((char*)lineBuf,
-                            "CONNECTION: KEEP-ALIVE") == 0) {
-                        isKeepAlive = true;
                     }
                     continue;
                 }
@@ -166,8 +136,8 @@ void HttpTransport::readRequest ()
             if (step == 1) break;
 
         case 2:
-            while (requestBuffer.size) {
-                msg.push_back((char)requestBuffer.read());
+            while (xhrBuffer.size) {
+                msg.push_back((char)xhrBuffer.read());
             }
             if (msg.length() >= len) {
                 step = 3;
@@ -175,43 +145,53 @@ void HttpTransport::readRequest ()
         }
     }
 
+    // start pushing data into specified port
     unsigned char *s = reinterpret_cast<unsigned char*>(const_cast<char*>(
             msg.c_str()));
     len = base64_decode((char*)s, s, msg.length());
     if (len < 4) {
+        l.warn("aborting... abnormal request\n");
         return;
     }
     int i = 0;
-
     {
         int p = s[i++];
         p = (p << 8) + s[i++];
         p = (p << 8) + s[i++];
         p = (p << 8) + s[i++];
-        requestPort = registry->getPortWithLock(-p);
+        xhrPortId = p;
+        xhrPort = registry->getPortWithLock(-p);
         l.debug("receiving %d bytes from port:%d\n", len-4, -p);
     }
 
+    if (xhrPort->reader.frame) {
+        l.fatal("xhrPort already has reader. :%08x\n", xhrPort->reader.frame);
+    }
     while (i < len) {
-        while (i < len && requestBuffer.margin()) {
+        while (i < len && xhrBuffer.margin()) {
             l.warn("%d '%c'\n", s[i], s[i]);
-            requestBuffer.write(s[i++]);
+            xhrBuffer.write(s[i++]);
         }
-        switch (requestPort->decode(&requestBuffer)) {
+        switch (xhrPort->decode(&xhrBuffer)) {
         case Frame::COMPLETE:
             if (i > len) {
                 l.error("dropped remaining %d bytes\n", (len - i));
                 i = len;
             }
-            if (requestBuffer.size) {
-                l.error("dropped remaining %d bytes in buffer\n", requestBuffer.size);
-                requestBuffer.reset();
+            if (xhrBuffer.size) {
+                l.error("dropped remaining %d bytes in buffer\n", xhrBuffer.size);
+                xhrBuffer.reset();
             }
             break;
         case Frame::STOPPED:
             break; // continue reading
         case Frame::ABORTED:
         default:
+            // clean up
+            close(xhrFd);
+            xhrFd = -1;
+            registry->releasePortWithLock(xhrPort);
+            xhrPort = 0;
             return;
         }
     }
@@ -334,11 +314,11 @@ void HttpTransport::sendResponse ()
     FILE *f;
     Log l("sendres ");
 
-    l.debug("requestbuffer:%d\n", requestBuffer.size);
-    while (requestPort->writer.frame) {
-        requestPort->encode(&requestBuffer);
-        for (len = 0; len < sizeof(buf) && requestBuffer.size; len++) {
-            buf[len] = requestBuffer.read();
+    l.debug("xhrBuffer:%d\n", xhrBuffer.size);
+    while (xhrPort->writer.frame) {
+        xhrPort->encode(&xhrBuffer);
+        for (len = 0; len < sizeof(buf) && xhrBuffer.size; len++) {
+            buf[len] = xhrBuffer.read();
         }
         l.debug("encoding %d bytes\n", len);
         base64_encode((char*)buf, (char*)encoded, len);
@@ -346,7 +326,7 @@ void HttpTransport::sendResponse ()
     }
     l.info("sending %s\n", msg.c_str());
 
-    f = fdopen(requestFd, "w");
+    f = fdopen(xhrFd, "w");
     fprintf(f, "HTTP/1.1 200 OK\r\n");
     fprintf(f, "Access-Control-Allow-Origin: *\r\n");
     fprintf(f, "Content-Type: text/plain\r\n");
@@ -362,15 +342,26 @@ void HttpTransport::sendResponse ()
     //shutdown(fileno(f), SHUT_WR);
     fclose(f);
 
-    requestPort = 0;
-    requestFd = -1;
+    xhrFd = -1;
+    registry->releasePortWithLock(xhrPort);
+    xhrPort = 0;
 }
 
 void HttpTransport::send (Port *p)
 {
-    Log l("flush ");
+    Log l("send ");
 
-    if (p == requestPort) {
+    l.warn("port:%d\n", p->id);
+    if (p->id == -1) {
+        l.debug("pending send... waiting for port:-1 open\n");
+        while (p != xhrPort) {
+            if (isLooping && !pthread_equal(pthread_self(), loopThread)) {
+                pthread_cond_wait(&xhrWritable, &registry->monitor);
+            } else {
+                handleMessage(); // wait until xhr is open for response
+            }
+        }
+        l.debug("ok, now sending...\n");
         sendResponse();
         return;
     }
@@ -411,10 +402,12 @@ void HttpTransport::send (Port *p)
             io[1].iov_base = outBuffer.buffer;
             io[1].iov_len = outBuffer.end() - outBuffer.buffer;
             l.debug("sending message (wrapped)...\n");
-            w = writev(websocketFd, io, 2);
+            //w = writev(websocketFd, io, 2);
+            w = io[0].iov_len + io[1].iov_len;
         } else {
             l.debug("sending message...\n");
-            w = write(websocketFd, outBuffer.begin(), outBuffer.size);
+            //w = write(websocketFd, outBuffer.begin(), outBuffer.size);
+            w = outBuffer.size;
         }
         if (w >= 0) {
             l.debug("sent %d bytes.\n", w);
@@ -434,16 +427,79 @@ void HttpTransport::send (Port *p)
     pthread_cond_signal(&writable);
 }
 
-void HttpTransport::waitReadable ()
+void HttpTransport::handleMessage ()
 {
+    Log l("recv ");
     fd_set inSet;
-
+    int nfds = 0;
     FD_ZERO(&inSet);
-    FD_SET(websocketFd, &inSet);
+    if (listenFd >= 0) {
+        FD_SET(listenFd, &inSet);
+        nfds = (nfds > listenFd+1) ? nfds : listenFd+1;
+    }
+    if (websocketFd >= 0) {
+        FD_SET(websocketFd, &inSet);
+        nfds = (nfds > websocketFd+1) ? nfds : websocketFd+1;
+    }
+    if (xhrFd >= 0) {
+        FD_SET(xhrFd, &inSet);
+        nfds = (nfds > xhrFd+1) ? nfds : xhrFd+1;
+    }
+
+    l.info("blocked for reading. (lsn:%d,ws:%d,req:%d)\n",
+            listenFd, websocketFd, xhrFd);
 
     registry->unlock();
-    pselect(websocketFd+1, &inSet, 0, 0, 0, 0); // care return value?
+    if (pselect(nfds, &inSet, 0, 0, 0, 0) <= 0) {
+        registry->lock();
+        return;
+    }
     registry->lock();
+
+    if (websocketFd != -1 && FD_ISSET(websocketFd, &inSet)) {
+        l.info("reading from websocket...\n");
+        // TODO: handle websocket fd
+
+        // execute processors
+        for (map<int,Port*>::iterator i = registry->ports.begin();
+                i != registry->ports.end();) {
+            Port *p = i->second;
+            if (!p->requests.empty()) {
+                l.info("executing request...\n");
+            }
+            while (p->processRequest());
+            i++;
+            registry->releasePortWithLock(p);
+        }
+    } else {
+        if (FD_ISSET(listenFd, &inSet)) {
+            if (websocketFd == -1) {
+                // TODO: open websocket 
+            }
+            if (xhrFd != -1) {
+                // close previous connection
+                close(xhrFd);
+                xhrFd = -1;
+            }
+
+            l.info("accepting...\n");
+            {
+                struct sockaddr_in clientAddr;
+                socklen_t len = sizeof(clientAddr);
+                xhrFd = accept(listenFd, (struct sockaddr*)&clientAddr,
+                        &len);
+                l.info("xhrFd:%d\n", xhrFd);
+            }
+        } else if (xhrFd != -1 && FD_ISSET(xhrFd, &inSet)) {
+            l.info("reading request...\n");
+            readRequest();
+            if (xhrPort) {
+                l.info("request from port:%d\n", xhrPort->id);
+                pthread_cond_signal(&xhrWritable);
+                xhrPort->processRequest();
+            }
+        }
+    }
 }
 
 void HttpTransport::receive (Port *p)
@@ -457,13 +513,13 @@ void HttpTransport::receive (Port *p)
         }
     }
 
-    waitReadable();
-    tryRead();
+    handleMessage();
 }
 
 void HttpTransport::notifyUnhandledRequest (Port *p)
 {
-    if (p != requestPort) {
+    Log l("nur ");
+    if (p != xhrPort) {
         return;
     }
     Request *req = p->requests.front();
@@ -471,15 +527,16 @@ void HttpTransport::notifyUnhandledRequest (Port *p)
         return;
     }
 
+    l.error("sending empty response\n");
     // close xhr connection for asynchronous call
-    FILE *f = fdopen(requestFd, "w");
+    FILE *f = fdopen(xhrFd, "w");
     fprintf(f, "HTTP/1.1 200 OK\r\n");
     fprintf(f, "Access-Control-Allow-Origin: *\r\n");
     fprintf(f, "Content-Type: text/plain\r\n");
     fprintf(f, "Content-Length: 0\r\n");
     fprintf(f, "\r\n");
     fclose(f);
-    requestFd = -1;
+    xhrFd = -1;
 }
 
 /*------ Base64 Encoding Table ------*/

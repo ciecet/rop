@@ -390,7 +390,7 @@ var writeAs = function (type, obj, buf, ret) {
 }
 
 var writeRequest = function (buf, header, oid, mid, args, argTypes) {
-    alert("requesting "+oid+"."+mid+":"+args)
+    //alert("requesting "+oid+"."+mid+":"+args)
     var i = 0
     var writeNext = function() {
         if (i >= argTypes.length) return
@@ -622,6 +622,7 @@ var Registry = defineClass({
         }
     },
     notifyRemoteDestroy: function(id, count) {
+        alert("sending nrd("+id+","+count+")")
         var p = this.getPort(0)
         var args = arguments
         p.writer = function(buf) {
@@ -683,13 +684,15 @@ var Transport = defineClass({
         buf.write((p.id >> 16) & 0xff)
         buf.write((p.id >> 8) & 0xff)
         buf.write(p.id & 0xff)
-        w = function() { return p.writer(buf) }
+        w = function() { if (p.writer) return p.writer(buf) }
         while (w) {
+            console.log("wrigin...");
             w = this.runCont(w)
             while (buf.size > 0) {
                 msg.push(buf.read())
             }
         }
+        p.writer = undefined
 
         msg = encode64(String.fromCharCode.apply(String, msg))
 
@@ -698,6 +701,7 @@ var Transport = defineClass({
         req.setRequestHeader("Content-Type", "text/plain")
         req.send(msg)
         msg = req.responseText
+        if (msg == "") return
 
         msg = decode64(msg)
         var arr = []
@@ -711,6 +715,7 @@ var Transport = defineClass({
             while (i < msg.length && buf.margin() > 0) {
                 buf.write(msg.charCodeAt(i++))
             }
+            console.log("reading...");
             r = this.runCont(r)
         }
     },
@@ -739,7 +744,7 @@ var Port = defineClass({
     },
     send: function(ret) {
         if (ret) this.returns.push(ret)
-        this.registry.transport.send(this)
+        this.registry.transport.sendAndReceive(this)
         this.registry.releasePort(this)
     },
     sendAndWait: function(ret) {

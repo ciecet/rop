@@ -6,27 +6,39 @@
 namespace rop {
 
 struct HttpTransport: Transport {
+    int listenFd;
     int port;
+
     int websocketFd;
-    int requestFd;
     Port *inPort;
-    Port *requestPort;
     Buffer inBuffer;
     Buffer outBuffer;
-    Buffer requestBuffer;
+
+    int xhrFd;
+    Port *xhrPort;
+    Buffer xhrBuffer;
+    int32_t xhrPortId;
+    pthread_cond_t xhrWritable;
+
     pthread_cond_t writable;
+
     pthread_t loopThread;
     bool isLooping;
-    bool isSending;
-    bool isKeepAlive;
+
+    bool isSending; //?
     
-    HttpTransport (int p): port(p),
-            websocketFd(-1), requestFd(-1), inPort(0), requestPort(0),
-            isLooping(false), isSending(false), isKeepAlive(false) {
+    HttpTransport (int p):
+            listenFd(-1), port(p),
+            websocketFd(-1), inPort(0),
+            xhrFd(-1), xhrPort(0),
+            isLooping(false),
+            isSending(false) {
         pthread_cond_init(&writable, 0);
+        pthread_cond_init(&xhrWritable, 0);
     }
     ~HttpTransport () {
         pthread_cond_destroy(&writable);
+        pthread_cond_destroy(&xhrWritable);
     }
 
     void loop (); // handle reading & processing the request
@@ -34,7 +46,7 @@ struct HttpTransport: Transport {
     void readRequest(); // syncrhonous
     void sendResponse(); // syncrhonous
     void tryRead ();
-    void waitReadable ();
+    void handleMessage ();
     void waitWritable ();
 
 ////////////////////////////////////////////////////////////////////////////////

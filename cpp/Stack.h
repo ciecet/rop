@@ -70,6 +70,7 @@ struct Stack {
 
         if (reinterpret_cast<char*>(f) >= stack &&
                 reinterpret_cast<char*>(f) < stack + STACK_SIZE) {
+            top = reinterpret_cast<char*>(f);
             f->~Frame();
         }
     }
