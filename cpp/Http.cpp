@@ -189,7 +189,7 @@ reswitch:
             //bitdump(buf, 0, 16);
 
             //bool fin = (h0 & 0x80) != 0;
-            int op = h0 & 0x0f;
+            opcode = OPCODE(h0 & 0x0f);
             bool mask = (h1 & 0x80) != 0;
             if (mask) {
                 minread += 4;
