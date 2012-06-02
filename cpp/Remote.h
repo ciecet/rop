@@ -12,6 +12,7 @@
 #include "Ref.h"
 #include "Stack.h"
 #include "Tuple.h"
+#include "Buffer.h"
 #include "Log.h"
 
 namespace rop {
@@ -20,73 +21,12 @@ class RemoteException: public std::exception {
 };
 
 /**
- * Byte queue buffer with fixed size.
- * io operation is done against this structure.
- */
-struct Buffer {
-
-    static const int BUFFER_SIZE = 4*1024;
-
-    int offset;
-    int size;
-    unsigned char buffer[BUFFER_SIZE];
-
-    Buffer(): offset(0), size(0) { }
-
-    unsigned char read () {
-        unsigned char ret = buffer[offset];
-        offset = (offset+1) % BUFFER_SIZE;
-        size--;
-        return ret;
-    }
-
-    unsigned char peek (int i) {
-        return buffer[(offset+i) % BUFFER_SIZE];
-    }
-
-    void write (unsigned char d) {
-        buffer[(offset+size) % BUFFER_SIZE] = d;
-        size++;
-    }
-
-    int margin () {
-        return sizeof(buffer) - size;
-    }
-
-    void reset () {
-        offset = 0;
-        size = 0;
-    }
-
-    void drop (int s) {
-        offset = (offset+s) % BUFFER_SIZE;
-        size -= s;
-    }
-
-    unsigned char *begin () {
-        return &buffer[offset];
-    }
-
-    unsigned char *end () {
-        return &buffer[(offset+size) % BUFFER_SIZE];
-    }
-
-    bool hasWrappedData () {
-        return (offset + size) > BUFFER_SIZE;
-    }
-
-    bool hasWrappedMargin () {
-        return (offset > 0) && (offset + size) < BUFFER_SIZE;
-    }
-};
-
-/**
  * Stack extension for reader/writer frames
  */
 struct Port;
 struct PortStack: base::Stack {
     Port *port;
-    Buffer *buffer;
+    base::Buffer *buffer;
     PortStack (Port *p): port(p), buffer(0) {}
 };
 
@@ -136,8 +76,8 @@ struct IntReader: base::Frame {
     T &obj;
     IntReader (T &o): obj(o) {}
     STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
-        if (buf->size < sizeof(T)) return STOPPED;
+        base::Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        if (buf->size() < sizeof(T)) return STOPPED;
         T t = buf->peek(0);
         for (int i = 1; i < sizeof(T); i++) {
             t = (t << 8) + buf->peek(i);
@@ -153,7 +93,7 @@ struct IntWriter: base::Frame {
     T &obj;
     IntWriter (T &o): obj(o) {}
     STATE run (base::Stack *stack) {
-        Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
+        base::Buffer *const buf = static_cast<PortStack*>(stack)->buffer;
         if (buf->margin() < sizeof(T)) return STOPPED;
         T t = obj;
         for (int i = (sizeof(T) - 1) * 8; i > 0; i -= 8) {
@@ -197,7 +137,7 @@ template<> struct Reader<std::string>: base::Frame {
     Reader (std::string &o): obj(o) {}
 
     STATE run (base::Stack *stack) {
-        Buffer *buf = static_cast<PortStack*>(stack)->buffer;
+        base::Buffer *buf = static_cast<PortStack*>(stack)->buffer;
 
         // read size
         BEGIN_STEP();
@@ -208,7 +148,7 @@ template<> struct Reader<std::string>: base::Frame {
         // read chars
         NEXT_STEP();
         {
-            int n = (remain > buf->size) ? buf->size : remain;
+            int n = (remain > buf->size()) ? buf->size() : remain;
             for (int i = 0; i < n; i++) {
                 obj.push_back(static_cast<char>(buf->peek(i)));
             }
@@ -230,7 +170,7 @@ template<> struct Writer<std::string>: base::Frame {
     Writer (std::string &o): obj(o) {}
 
     STATE run (base::Stack *stack) {
-        Buffer *buf = static_cast<PortStack*>(stack)->buffer;
+        base::Buffer *buf = static_cast<PortStack*>(stack)->buffer;
 
         // write size 
         BEGIN_STEP();
@@ -588,13 +528,13 @@ struct Registry {
      * Derived class may need to use getPort() while holding the lock already.
      * This utility is provided for the case recursive lock is not available.
      */
-    Port *getPortWithLock (int pid);
+    Port *unsafeGetPort (int pid);
 
     /**
      * Derived class may need to use releasePort() while holding the lock yet.
      * Provided as utility method.
      */
-    void releasePortWithLock (Port *p);
+    void unsafeReleasePort (Port *p);
 };
 
 /**
@@ -635,8 +575,18 @@ struct Port {
     bool waitingSyncReturn;
     pthread_cond_t updated;
 
+    // waiting line for sending.
+    Port *next;
+
+    // attached thread proccessing the requests.  
+    bool isProcessingRequests;
+    pthread_t processingThread;
+
+
     Port (Registry *reg): registry(reg), lastRequest(0),
-            reader(this), writer(this), waitingSyncReturn(false) {
+            reader(this), writer(this), waitingSyncReturn(false),
+            next(0),
+            isProcessingRequests(false) {
         pthread_cond_init(&updated, 0);
     }
 
@@ -647,14 +597,14 @@ struct Port {
      * Called from the transport with the monitor lock held.
      * Returns either STOPPED or COMPLETE or ABORT.
      */
-    base::Frame::STATE encode (Buffer *buf);
+    base::Frame::STATE encode (base::Buffer *buf);
 
     /*
      * Decode incoming messages from the buffer.
      * Called from the transport with the monitor lock held.
      * Returns either STOPPED or COMPLETE or ABORT.
      */
-    base::Frame::STATE decode (Buffer *buf);
+    base::Frame::STATE decode (base::Buffer *buf);
 
     /**
      * Blocks until the transport finishes to send out-going messages,

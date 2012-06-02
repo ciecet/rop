@@ -22,45 +22,37 @@ struct EchoCallbackImpl: Exportable<EchoCallback> {
 };
 
 struct EchoImpl: Exportable<Echo> {
-    string echo (string msg);
-    string concat (vector<string> msgs);
-    void touchmenot ();
-    void recursiveEcho (string msg, Ref<EchoCallback> cb);
+    string echo (string msg) {
+        printf("ECHO MESSAGE - %s\n", msg.c_str());
+        return msg;
+    }
+    string concat (vector<string> msgs) {
+        printf("CONCAT MESSAGE - %d\n", msgs.size());
+        string ret;
+        for (vector<string>::iterator i = msgs.begin(); i != msgs.end(); i++) {
+            ret += *i;
+        }
+        return ret;
+    }
+    void touchmenot () {
+        printf("THROW 3!\n");
+        ContainerRef<int> i = new Container<int>();
+        *i = 3;
+        throw TestException(i);
+    }
+    void recursiveEcho (string msg, Ref<EchoCallback> cb) {
+        printf("RECURSIVE ECHO - %s\n", msg.c_str());
+        cb->call(msg);
+    }
     void hello (test::Person &p) {
         string greeting("Hello, ");
         p.callback->call(greeting + p.name);
     }
-};
-
-string EchoImpl::echo (string msg)
-{
-    printf("ECHO MESSAGE - %s\n", msg.c_str());
-    return msg;
-}
-
-string EchoImpl::concat (vector<string> msgs)
-{
-    printf("CONCAT MESSAGE - %d\n", msgs.size());
-    string ret;
-    for (vector<string>::iterator i = msgs.begin(); i != msgs.end(); i++) {
-        ret += *i;
+    void asyncEcho (string msg, Ref<EchoCallback> cb) {
+        printf("Async ECHO - %s\n", msg.c_str());
+        cb->call(msg);
     }
-    return ret;
-}
-
-void EchoImpl::touchmenot ()
-{
-    printf("THROW 3!\n");
-    ContainerRef<int> i = new Container<int>();
-    *i = 3;
-    throw TestException(i);
-}
-
-void EchoImpl::recursiveEcho (string msg, Ref<EchoCallback> cb)
-{
-    printf("RECURSIVE ECHO - %s\n", msg.c_str());
-    cb->call(msg);
-}
+};
 
 void test1 ()
 {

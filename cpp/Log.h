@@ -11,6 +11,12 @@
 
 using namespace std;
 
+#define ASSERT(xpr) do { \
+    if (xpr) break; \
+    printf("[ASSERT FAILED] %s (%s:%d)\n", #xpr, __FILE__, __LINE__); \
+    *(int*)1 = 0; \
+} while (0)
+
 struct Log {
 
     const char *prefix;

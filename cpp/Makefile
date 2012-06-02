@@ -1,17 +1,27 @@
 TARGET=test
 
-srcs = $(wildcard *Transport.cpp Registry.cpp)
+DEBUGFLAGS = -O0 -g
+CC = clang $(DEBUGFLAGS)
+CXX = clang++ $(DEBUGFLAGS)
+
+srcs = $(wildcard Registry.cpp *Transport.cpp EventDriver.cpp Http.cpp base64.c)
+objs = $(patsubst %.cpp, %.o, $(patsubst %.c, %.o, $(srcs)))
+
 headers = $(wildcard *.h)
 
 all: $(TARGET)
 
-test: $(srcs) $(headers) test.cpp
-	clang++ -O2 -g -o $@ $(srcs) test.cpp -lpthread 2>&1
-	#clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
+%.o: %.cpp $(headers)
+	$(CXX) -c $<
 
-htest: $(srcs) $(headers) htest.cpp
-	clang++ -O2 -g -o $@ $(srcs) htest.cpp -lpthread 2>&1
-	#clang++ -O2 -g -o $@ $(srcs) -lpthread 2>&1
+%.o: %.c $(headers)
+	$(CC) -c $<
+
+test: $(objs) test.o
+	$(CXX) -o $@ $(objs) test.o -lpthread -lcrypto
+
+htest: $(objs) htest.o
+	$(CXX) -o $@ $(objs) htest.o -lpthread -lcrypto
 
 .PHONY: run grun
 run: $(TARGET)

@@ -42,18 +42,25 @@ struct EchoImpl: Exportable<Echo> {
         string greeting("Hello, ");
         p.callback->call(greeting + p.name);
     }
+    void asyncEcho (string msg, Ref<EchoCallback> cb) {
+        printf("Async ECHO - %s\n", msg.c_str());
+        cb->call(msg);
+    }
 };
 
 void serv ()
 {
     Log l("server ");
     // server
+    EventDriver ed;
+
     Registry reg;
     reg.registerExportable("Echo", new EchoImpl());
-    HttpTransport trans(8080);
+    HttpTransport trans;
     reg.setTransport(&trans);
-    l.info("enter loop...\n");
-    trans.loop();
+    trans.start(8080, &ed);
+
+    ed.loop();
 }
 
 int main ()

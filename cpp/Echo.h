@@ -11,6 +11,7 @@ struct Echo: rop::Interface {
     virtual void touchmenot () = 0;
     virtual void recursiveEcho (std::string msg, base::Ref<test::EchoCallback>  cb) = 0;
     virtual void hello (test::Person &p) = 0;
+    virtual void asyncEcho (std::string msg, base::Ref<test::EchoCallback>  cb) = 0;
 };
 }
 namespace rop {
@@ -99,6 +100,17 @@ struct Stub<test::Echo>: test::Echo {
         case 0: return;
         default: throw rop::RemoteException();
         }
+    }
+    void asyncEcho (std::string msg, base::Ref<test::EchoCallback>  cb) {
+        Port *__p = remote->registry->getPort();
+
+        Writer<std::string> __arg_msg(msg);
+        Writer<base::Ref<test::EchoCallback> > __arg_cb(cb);
+        RequestWriter<2> req(1<<6, remote->id, 5);
+        req.args[0] = &__arg_msg;
+        req.args[1] = &__arg_cb;
+        __p->writer.push(&req);
+        __p->send(0);
     }
 };
 template<>
@@ -191,6 +203,17 @@ struct Skeleton<test::Echo>: SkeletonBase {
             }
         }
     };
+    struct __req_asyncEcho: Request {
+        test::Echo *object;
+        ArgumentsReader<std::string, base::Ref<test::EchoCallback> > args;
+        __req_asyncEcho (test::Echo *o): object(o) {
+            argumentsReader = &args;
+            returnWriter = 0;
+        }
+        void call () {
+            object->asyncEcho(args.get<std::string>(0), args.get<base::Ref<test::EchoCallback> >(1));
+        }
+    };
     Request *createRequest (int mid) {
         test::Echo *o = static_cast<test::Echo*>(object.get());
         switch (mid) {
@@ -199,6 +222,7 @@ struct Skeleton<test::Echo>: SkeletonBase {
         case 2: return new __req_touchmenot(o);
         case 3: return new __req_recursiveEcho(o);
         case 4: return new __req_hello(o);
+        case 5: return new __req_asyncEcho(o);
         default: return 0;
         }
     }

@@ -221,10 +221,10 @@ Port *Registry::getPort ()
 Port *Registry::getPort (int pid)
 {
     lock();
-    return getPortWithLock(pid);
+    return unsafeGetPort(pid);
 }
 
-Port *Registry::getPortWithLock (int pid)
+Port *Registry::unsafeGetPort (int pid)
 {
     Port *&p = ports[pid];
     if (!p) {
@@ -241,11 +241,11 @@ Port *Registry::getPortWithLock (int pid)
 
 void Registry::releasePort (Port *p)
 {
-    releasePortWithLock(p);
+    unsafeReleasePort(p);
     unlock();
 }
 
-void Registry::releasePortWithLock (Port *p)
+void Registry::unsafeReleasePort (Port *p)
 {
     if (p->isActive()) {
         return;

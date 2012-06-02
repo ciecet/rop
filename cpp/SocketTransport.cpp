@@ -48,7 +48,7 @@ void SocketTransport::loop ()
                 l.info("executing request...\n");
             }
             while (p->processRequest());
-            registry->releasePortWithLock(p);
+            registry->unsafeReleasePort(p);
         }
 
         registry->unlock();
@@ -62,17 +62,9 @@ void SocketTransport::tryRead ()
     while (true) {
 
         // fill in buffer
+        inBuffer.moveFront();
         int r;
-        if (inBuffer.hasWrappedMargin()) {
-            iovec io[2];
-            io[0].iov_base = inBuffer.end();
-            io[0].iov_len = inBuffer.margin() - inBuffer.offset;
-            io[1].iov_base = inBuffer.buffer;
-            io[1].iov_len = inBuffer.offset;
-            r = readv(inFd, io, 2);
-        } else {
-            r = read(inFd, inBuffer.end(), inBuffer.margin());
-        }
+        r = read(inFd, inBuffer.end(), inBuffer.margin());
         if (r == 0) {
             // eof
             break;
@@ -80,7 +72,7 @@ void SocketTransport::tryRead ()
             // fail or EWOULDBLOCK
             break;
         }
-        inBuffer.size += r;
+        inBuffer.grow(r);
         l.debug("read %d bytes.\n", r);
 
 begin_message:
@@ -88,14 +80,14 @@ begin_message:
         // on start of message frame...
         if (inPort == 0) {
             // need port id and payload length
-            if (inBuffer.size < 4) {
+            if (inBuffer.size() < 4) {
                 break;
             }
             int p = inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
             p = (p << 8) + inBuffer.read();
-            inPort = registry->getPortWithLock(-p); // reverse local<->remote port id
+            inPort = registry->unsafeGetPort(-p); // reverse local<->remote port id
             l.debug("getting port:%d\n", -p);
         }
 
@@ -184,25 +176,16 @@ void SocketTransport::send (Port *p)
                 l.error("ABORTED..?\n");
             }
         } else {
-            if (outBuffer.size == 0) {
+            if (outBuffer.size() == 0) {
                 // all flushed.
                 break;
             }
         }
 
         int w;
-        if (outBuffer.hasWrappedData()) {
-            iovec io[2];
-            io[0].iov_base = outBuffer.begin();
-            io[0].iov_len = Buffer::BUFFER_SIZE - outBuffer.offset;
-            io[1].iov_base = outBuffer.buffer;
-            io[1].iov_len = outBuffer.end() - outBuffer.buffer;
-            l.debug("sending message (wrapped)...\n");
-            w = writev(outFd, io, 2);
-        } else {
-            l.debug("sending message...\n");
-            w = write(outFd, outBuffer.begin(), outBuffer.size);
-        }
+        outBuffer.moveFront();
+        l.debug("sending message...\n");
+        w = ::write(outFd, outBuffer.begin(), outBuffer.size());
         if (w >= 0) {
             l.debug("sent %d bytes.\n", w);
             outBuffer.drop(w);

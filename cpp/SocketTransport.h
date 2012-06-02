@@ -8,9 +8,9 @@ namespace rop {
 struct SocketTransport: Transport {
     int inFd;
     int outFd;
-    Buffer inBuffer;
+    base::Buffer inBuffer;
     Port *inPort;
-    Buffer outBuffer;
+    base::Buffer outBuffer;
     pthread_cond_t writable;
     bool isSending;
     pthread_t loopThread;

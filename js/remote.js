@@ -372,6 +372,7 @@ var Types = {
 I8 = Types["i8"]
 I16 = Types["i16"]
 I32 = Types["i32"]
+I64 = Types["i64"]
 STRING = Types["String"]
 VOID = Types["void"]
 
@@ -560,6 +561,14 @@ var Remote = defineClass({
 })
 
 var rpcThreadId = undefined
+var asyncOnly = false
+
+var async = function (cb) {
+    var old = asyncOnly
+    asyncOnly = true
+    cb()
+    asyncOnly = old
+}
 
 var Registry = defineClass({
     init: function() {
@@ -623,14 +632,17 @@ var Registry = defineClass({
     },
     notifyRemoteDestroy: function(id, count) {
         alert("sending nrd("+id+","+count+")")
-        var p = this.getPort(0)
-        var args = arguments
-        p.writer = function(buf) {
-            return writeRequest(buf, 1<<6, 0, 1, args, [I32, I32])
-        }
-        p.send()
-        this.remotes[id].registry = undefined
-        delete this.remotes[id]
+        var self = this
+        async( function() {
+            var p = self.getPort(0)
+            var args = arguments
+            p.writer = function(buf) {
+                return writeRequest(buf, 1<<6, 0, 1, args, [I32, I32])
+            }
+            p.send()
+            self.remotes[id].registry = undefined
+            delete self.remotes[id]
+        })
     },
     getSkeleton: function(id) {
         if (id.constructor === Number) {
@@ -658,8 +670,9 @@ var Registry = defineClass({
 })
 
 var Transport = defineClass({
-    init: function(url) {
-        this.url = url
+    init: function(host, onconnect) {
+        this.xhrUrl = "http://"+host+"/rop/xhr"
+        this.wsUrl = "ws://"+host+"/rop/ws"
 
         this.registry = undefined
         this.inBuffer = new Buffer()
@@ -670,8 +683,77 @@ var Transport = defineClass({
         this.readOutPort = undefined
 
         // open websocket
+        var ws = new WebSocket(this.wsUrl)
+        var self = this
+        ws.onopen = function() {
+            console.log("WebSocket open")
+            self.webSocket = ws
+            onconnect()
+        }
+        ws.onclose = function() {
+            console.log("WebSocket closed")
+            self.WebSocket = undefined
+        }
+        ws.onmessage = function(e) {
+            //alert(e.data)
+            self.receive(e)
+        }
     },
     send: function(p) {
+        // send via websocket
+
+        // construct request message from port
+        var msg = []
+        buf = this.requestBuffer
+        buf.port = p
+        buf.write((p.id >> 24) & 0xff)
+        buf.write((p.id >> 16) & 0xff)
+        buf.write((p.id >> 8) & 0xff)
+        buf.write(p.id & 0xff)
+        w = function() { if (p.writer) return p.writer(buf) }
+        while (w) {
+            w = this.runCont(w)
+            while (buf.size > 0) {
+                msg.push(buf.read())
+            }
+        }
+        p.writer = undefined
+
+        msg = encode64(String.fromCharCode.apply(String, msg))
+        this.webSocket.send(msg)
+    },
+    receive: function(e) {
+        // receive via websocket
+        console.log(e.data)
+        var msg = decode64(e.data)
+        var pid = msg.charCodeAt(0)
+        pid = (pid << 8) + msg.charCodeAt(1)
+        pid = (pid << 8) + msg.charCodeAt(2)
+        pid = (pid << 8) + msg.charCodeAt(3)
+        pid = -pid
+        console.log("Getting message to port:"+pid)
+        alert("Getting message to port:"+pid)
+
+        var arr = []
+        for (var i = 0; i < msg.length; i++) {
+            arr.push(msg.charCodeAt(i))
+        }
+        inspect(arr)
+
+        var p = this.registry.getPort(pid)
+        var buf = this.inBuffer
+        var r = function() { return p.readMessage(buf, function() {}) }
+        var i = 4
+        while (r) {
+            console.log("reading... from:"+i);
+            console.log(r)
+            while (i < msg.length && buf.margin() > 0) {
+                buf.write(msg.charCodeAt(i++))
+            }
+            r = this.runCont(r)
+        }
+        this.registry.releasePort(p)
+        while (p.processRequest());
     },
     sendAndReceive: function(p) {
         // send request and wait for response via xmlhttprequest
@@ -697,19 +779,17 @@ var Transport = defineClass({
         msg = encode64(String.fromCharCode.apply(String, msg))
 
         req = new XMLHttpRequest()
-        req.open("POST", this.url, false)
+        req.open("POST", this.xhrUrl, false)
         req.setRequestHeader("Content-Type", "text/plain")
         req.send(msg)
         msg = req.responseText
-        if (msg == "") return
-
-        msg = decode64(msg)
-        var arr = []
-        for (var i in msg) {
-            arr.push(msg.charCodeAt(i))
+        if (msg == "") {
+            console.log("got empty response from xhr (it's ok)")
+            return
         }
 
-        r = function() { return p.readMessage(buf, function() {}) }
+        msg = decode64(msg)
+        var r = function() { return p.readMessage(buf, function() {}) }
         var i = 0
         while (r) {
             while (i < msg.length && buf.margin() > 0) {
@@ -744,10 +824,21 @@ var Port = defineClass({
     },
     send: function(ret) {
         if (ret) this.returns.push(ret)
-        this.registry.transport.sendAndReceive(this)
+        if (asyncOnly) {
+            this.registry.transport.send(this)
+        } else {
+            this.registry.transport.sendAndReceive(this)
+        }
         this.registry.releasePort(this)
     },
     sendAndWait: function(ret) {
+        if (asyncOnly) {
+            alert("Cannot use synchronous API in async mode")
+            // TODO: flush port-out 
+            this.registry.releasePort(this)
+            throw "Cannot use synchronous API in async mode"
+        }
+
         this.returns.push(ret)
         do {
             this.registry.transport.sendAndReceive(this)

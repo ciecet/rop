@@ -6,7 +6,7 @@ namespace base {
 /**
  * Generic smart pointer which points to reference counted object.
  * Reference counted object should have ref()/deref() methods, and
- * reference counter starts from zero.
+ * reference count starts from zero.
  */
 template <typename T>
 class Ref {
@@ -55,7 +55,7 @@ public:
         object->ref();
         return *this;
     }
-    operator void*() { return object; }
+    operator T*() { return object; }
     bool operator==(const Ref<T>& r) {
         return object == r.object;
     }
@@ -143,7 +143,7 @@ public:
         object->ref();
         return *this;
     }
-    operator void*() { return object; }
+    operator T*() { return get(); }
     bool operator==(const ContainerRef<T>& r) {
         return object == r.object;
     }
