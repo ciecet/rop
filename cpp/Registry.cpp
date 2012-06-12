@@ -49,11 +49,15 @@ struct RegistrySkeleton: SkeletonBase {
         void call () {
             Log l("getRemote ");
             l.debug("finding %s\n", args.get<string>(0).c_str());
+
+            registry->lock();
+
             map<string,InterfaceRef>::iterator iter =
                     registry->exportables.find(args.get<string>(0));
             if (iter == registry->exportables.end()) {
                 ret.index = -1;
                 l.debug("not found\n");
+                registry->unlock();
                 return;
             }
             SkeletonBase *skel = registry->getSkeleton(iter->second.get());
@@ -61,6 +65,8 @@ struct RegistrySkeleton: SkeletonBase {
             ret.get<int32_t>(0) = skel->id;
             ret.index = 0;
             l.debug("found %08x(%d)\n", skel, skel->id);
+
+            registry->unlock();
         }
     };
 
