@@ -138,18 +138,11 @@ var Buffer = defineClass({
     }
 })
 
-var Interrupt = defineClass({
-    init: function(reason, cont) {
-        this.reason = reason
-        this.cont = cont
-    }
-})
-
 var IntegerCodec = [
     function (type, buf, ret) {
         var size = type[1]
         var tryRead = function() {
-            if (buf.size < size) throw new Interrupt("stopped", tryRead)
+            if (buf.size < size) return [tryRead]
             var i = 0;
             for (var j = 0; j < size; j++) {
                 i = (i << 8) + buf.read()
@@ -162,7 +155,7 @@ var IntegerCodec = [
         var size = type[1]
         var tryWrite = function() {
             if (buf.margin() < size) {
-                throw new Interrupt("stopped", tryWrite)
+                return [tryWrite]
             }
             for (var j = size - 1; j >= 0 ; j--) {
                 buf.write((i>>(8*j)) & 0xff)
@@ -531,18 +524,6 @@ var Skeleton = defineClass({
     }
 })
 
-/*
-var buf = new Buffer()
-var data = {3:["sooin", "okie"], 4:["수인", "현옥"]}
-var result
-var type = [MapCodec, I32, [ListCodec, STRING]]
-var sender = writeAs(type, data, buf, function(){})
-while (sender) sender = sender()
-var receiver = readAs(type, buf, function(r) { result = r })
-while (receiver) receiver = receiver()
-p(result)
-*/
-
 ////////////////////////////////////////////////////////////////////////////////
 // ROP
 var Remote = defineClass({
@@ -669,6 +650,15 @@ var Registry = defineClass({
     }
 })
 
+var runCont = function(cont) {
+    while (cont) {
+        if (cont.constructor == Array) {
+            return cont[0]
+        }
+        cont = cont()
+    }
+}
+
 var Transport = defineClass({
     init: function(host, onconnect) {
         this.xhrUrl = "http://"+host+"/rop/xhr"
@@ -712,7 +702,7 @@ var Transport = defineClass({
         buf.write(p.id & 0xff)
         w = function() { if (p.writer) return p.writer(buf) }
         while (w) {
-            w = this.runCont(w)
+            w = runCont(w)
             while (buf.size > 0) {
                 msg.push(buf.read())
             }
@@ -750,7 +740,7 @@ var Transport = defineClass({
             while (i < msg.length && buf.margin() > 0) {
                 buf.write(msg.charCodeAt(i++))
             }
-            r = this.runCont(r)
+            r = runCont(r)
         }
         this.registry.releasePort(p)
         while (p.processRequest());
@@ -769,7 +759,7 @@ var Transport = defineClass({
         w = function() { if (p.writer) return p.writer(buf) }
         while (w) {
             console.log("wrigin...");
-            w = this.runCont(w)
+            w = runCont(w)
             while (buf.size > 0) {
                 msg.push(buf.read())
             }
@@ -796,20 +786,9 @@ var Transport = defineClass({
                 buf.write(msg.charCodeAt(i++))
             }
             console.log("reading...");
-            r = this.runCont(r)
+            r = runCont(r)
         }
     },
-    runCont: function(cont) {
-        try {
-            while (cont !== undefined) cont = cont(buf)
-        } catch (e) {
-            if (e.constructor !== Interrupt) {
-                throw e
-            }
-            console.log(e.reason)
-            return e.cont
-        }
-    }
 })
 
 var Port = defineClass({
@@ -887,15 +866,15 @@ var Port = defineClass({
         return readAs(I8, buf, function(messageHead) {
             if ((messageHead & (3<<6)) === (3<<6)) {
                 var r = self.returns.pop()
-                if (!r) throw new Interrupt("ABORTED")
+                if (!r) throws "No return waiting"
                 return r.read(messageHead, buf, ret)
             } else {
                 return readAs(I32, buf, function(objectId) {
                     objectId = -objectId
-                    if (objectId < 0) throw new Interrupt("ABORTED")
+                    if (objectId < 0) throw "Expected positive obj id"
                     return readAs(I16, buf, function(methodIndex) {
                         var skel = self.registry.getSkeleton(objectId)
-                        if (!skel) throw new Interrupt("ABORTED")
+                        if (!skel) throw "No such skeleton"
                         var base = methodIndex * 3 + 1
                         var req = new Request(skel.object, skel.type[base],
                                 skel.type[base+1], skel.type[base+2])
