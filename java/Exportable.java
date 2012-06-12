@@ -1,3 +1,3 @@
 interface Exportable {
-    Skeleton getSkeleton ();
+    Skeleton createSkeleton ();
 }

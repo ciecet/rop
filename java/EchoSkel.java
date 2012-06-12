@@ -2,50 +2,59 @@ import java.util.*;
 
 public class EchoSkel extends Skeleton {
 
-    private static final String[][][] types = new String[][][] {
-        { { "String" }, { "String" } },
-        { { "List<String>" }, { "String"}}
-    };
-
-    public String[] getArgumentTypes (int methodIndex) {
-        return types[methodIndex][0];
+    public EchoSkel (Echo e) {
+        object = e;
     }
 
-    public String[] getReturnTypes (int methodIndex) {
-        return types[methodIndex][1];
+    public Request createRequest (int h, int mid) {
+        synchronized (New.class) {
+            Request req = New.request(h, this, mid);
+            switch (mid) {
+            case 0:
+                req.addReader(New.stringReader());
+                req.ret.addWriter(New.stringWriter());
+                return req;
+            case 1:
+                req.addReader(New.listReader(New.stringReader()));
+                req.ret.addWriter(New.stringWriter());
+                return req;
+            default:
+                req.release();
+                return null;
+            }
+        }
     }
 
-    public int index;
-
-    private Echo impl;
-
-    public EchoSkel (Echo o) {
-        impl = o;
-    }
-
-    public void handleRequest (CallRequest r) {
-        switch (r.methodIndex) {
+    public void call (Request req) {
+        switch (req.methodIndex) {
         case 0:
-            System.out.println("Running echo()");
-            try {
-                r.returnValue = impl.echo((String)r.args[0]);
-                r.returnType = 0;
-            } catch (Throwable t) {
-                r.returnValue = t;
-                r.returnType = -1;
-            }
-            break;
+            __call_echo(req.arguments, req.ret);
+            return;
         case 1:
-            System.out.println("Running concat()");
-            try {
-                r.returnValue = impl.concat((List)r.args[0]);
-                r.returnType = 0;
-            } catch (Throwable t) {
-                r.returnValue = t;
-                r.returnType = -1;
-            }
-            break;
+            __call_concat(req.arguments, req.ret);
+            return;
         default:
+            return;
+        }
+    }
+
+    public void __call_echo (List args, ReturnWriter ret) {
+        try {
+            ret.value = ((Echo)object).echo((String)args.get(0));
+            ret.index = 0;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            ret.index = -1;
+        }
+    }
+
+    public void __call_concat (List args, ReturnWriter ret) {
+        try {
+            ret.value = ((Echo)object).concat((List)args.get(0));
+            ret.index = 0;
+        } catch (Throwable t) {
+            t.printStackTrace();
+            ret.index = -1;
         }
     }
 }

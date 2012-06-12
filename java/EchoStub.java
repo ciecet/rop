@@ -1,57 +1,44 @@
 import java.util.*;
 
-class EchoStub implements Echo {
-    private RemoteObject remoteObject;
+class EchoStub extends Stub implements Echo {
 
-    public static final String[] __echo_returntypes = new String[] { "String" };
-
-    public EchoStub (RemoteObject ro) {
-        remoteObject = ro;
-        Channel chn = ro.channel;
-        if (chn.getCodec("List<String>") == null) {
-            chn.putCodec("List<String>", new ListCodec(chn.getCodec("String")));
-        }
-        //if (chn.getSerializer("List<String>") == null) {
-        //    chn.setSerializer("List<String>",
-        //            new ListSerializer(new StringSerializer()));
-        //}
+    public EchoStub (Remote r) {
+        super(r);
     }
 
     public String echo (String msg) {
-        Channel chn = remoteObject.channel;
-        chn.lock();
-        chn.writeI8(Channel.CALL);
-        RemoteReturn ret = chn.writeRemoteReturn(__echo_returntypes);
-        chn.writeI16(remoteObject.objectId);
-        chn.writeI8(0);
-        chn.getCodec("String").write(chn, msg);
-        chn.unlock();
-
-        ret.waitForReturn();
-        switch (ret.returnType) {
+        RequestWriter req;
+        ReturnReader ret;
+        synchronized (New.class) {
+            req = New.requestWriter(0, remote.id, 0);
+            req.addArg(msg, New.stringWriter());
+            ret = New.returnReader();
+            ret.addReader(New.stringReader());
+        }
+        remote.registry.syncCall(req, ret);
+        switch (ret.index) {
         case 0:
-            return (String)ret.returnValue;
+            return (String)ret.value;
         default:
-            return null;
+            throw new RemoteException("return index:"+ret.index);
         }
     }
 
     public String concat (List words) {
-        Channel chn = remoteObject.channel;
-        chn.lock();
-        chn.writeI8(Channel.CALL);
-        RemoteReturn ret = chn.writeRemoteReturn(__echo_returntypes);
-        chn.writeI16(remoteObject.objectId);
-        chn.writeI8(1);
-        chn.getCodec("List<String>").write(chn, words);
-        chn.unlock();
-
-        ret.waitForReturn();
-        switch (ret.returnType) {
+        RequestWriter req;
+        ReturnReader ret;
+        synchronized (New.class) {
+            req = New.requestWriter(0, remote.id, 1);
+            req.addArg(words, New.listWriter(New.stringWriter()));
+            ret = New.returnReader();
+            ret.addReader(New.stringReader());
+        }
+        remote.registry.syncCall(req, ret);
+        switch (ret.index) {
         case 0:
-            return (String)ret.returnValue;
+            return (String)ret.value;
         default:
-            return null;
+            throw new RemoteException("return index:"+ret.index);
         }
     }
 }

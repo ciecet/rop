@@ -2,26 +2,44 @@ import java.io.*;
 import java.util.*;
 
 public class Test {
+    private static class EchoImpl implements Exportable, Echo {
+
+        public Skeleton createSkeleton () {
+            return new EchoSkel(this);
+        }
+
+        public String echo (String msg) {
+            return msg;
+        }
+
+        public String concat (List words) {
+            StringBuffer buf = new StringBuffer();
+            for (Iterator iter = words.iterator(); iter.hasNext(); ) {
+                buf.append(iter.next().toString());
+            }
+            System.out.println("returns:"+buf.toString());
+            return buf.toString();
+        }
+    }
+
     public static void main (String[] args) {
         test1();
     }
 
     public static void test1 () {
         try {
-            PipedOutputStream pout0 = new PipedOutputStream();
-            PipedInputStream pin0 = new PipedInputStream(pout0);
-            PipedOutputStream pout1 = new PipedOutputStream();
-            PipedInputStream pin1 = new PipedInputStream(pout1);
+            Pipe p0 = new Pipe();
+            Pipe p1 = new Pipe();
             System.out.println("Created pipes");
-            Channel chn0 = new Channel(pin1, pout0);
-            Channel chn1 = new Channel(pin0, pout1);
-            System.out.println("Created Channels");
+            Transport t0 = new StreamTransport(p1.inputStream, p0.outputStream);
+            Transport t1 = new StreamTransport(p0.inputStream, p1.outputStream);
+            System.out.println("Created Transports");
 
             System.out.println("Register Echo");
-            chn1.registerObject("Echo", new EchoImpl());
+            t1.registry.registerExportable("Echo", new EchoImpl());
 
             System.out.println("Request stub for Echo");
-            Echo e = new EchoStub(chn0.getRemoteObject("Echo"));
+            Echo e = new EchoStub(t0.registry.getRemote("Echo"));
             System.out.println("Method call");
 
             System.out.println("got echo?:"+e.echo("hi!").equals("hi!"));

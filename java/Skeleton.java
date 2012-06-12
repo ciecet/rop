@@ -1,6 +1,9 @@
 public abstract class Skeleton {
-    int index;
-    public abstract String[] getArgumentTypes (int methodIndex);
-    public abstract String[] getReturnTypes (int methodIndex);
-    public abstract void handleRequest (CallRequest r);
+    int id;
+    int count;
+    Object object;
+
+    public abstract Request createRequest (int h, int mid);
+
+    public abstract void call (Request req);
 }
