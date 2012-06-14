@@ -2,6 +2,16 @@ import java.io.*;
 import java.util.*;
 
 public class Test {
+
+    private static class EchoCallbackImpl implements Exportable, EchoCallback {
+        public Skeleton createSkeleton () {
+            return new EchoCallbackSkel(this);
+        }
+        public void call (String msg) {
+            System.out.println("GOT CALLBACK:"+msg);
+        }
+    }
+
     private static class EchoImpl implements Exportable, Echo {
 
         public Skeleton createSkeleton () {
@@ -17,8 +27,23 @@ public class Test {
             for (Iterator iter = words.iterator(); iter.hasNext(); ) {
                 buf.append(iter.next().toString());
             }
-            System.out.println("returns:"+buf.toString());
             return buf.toString();
+        }
+
+        public void touchmenot () throws TestException {
+            throw new TestException(new Integer(3));
+        }
+
+        public void recursiveEcho (String msg, EchoCallback cb) {
+            cb.call(msg);
+        }
+
+        public void hello (Person p) {
+            p.callback.call("Hi~ "+p.name);
+        }
+
+        public void asyncEcho (String msg, EchoCallback cb) {
+            cb.call("Hi again~ "+msg);
         }
     }
 
@@ -30,24 +55,40 @@ public class Test {
         try {
             Pipe p0 = new Pipe();
             Pipe p1 = new Pipe();
-            System.out.println("Created pipes");
+            Log.info("Created pipes");
             Transport t0 = new StreamTransport(p1.inputStream, p0.outputStream);
             Transport t1 = new StreamTransport(p0.inputStream, p1.outputStream);
-            System.out.println("Created Transports");
+            Log.info("Created Transports");
 
-            System.out.println("Register Echo");
+            Log.info("Register Echo");
             t1.registry.registerExportable("Echo", new EchoImpl());
 
-            System.out.println("Request stub for Echo");
+            Log.info("Request stub for Echo");
             Echo e = new EchoStub(t0.registry.getRemote("Echo"));
-            System.out.println("Method call");
 
-            System.out.println("got echo?:"+e.echo("hi!").equals("hi!"));
+            Log.info("got echo?:"+e.echo("hi!").equals("hi!"));
             List a = new ArrayList();
             a.add("a");
             a.add("b");
             a.add("c");
-            System.out.println("got concat?:"+e.concat(a).equals("abc"));
+            Log.info("got concat?:"+e.concat(a).equals("abc"));
+
+            try {
+                e.touchmenot();
+            } catch (TestException ex) {
+                Log.info("got exception:"+ex);
+                Log.info("got exception:"+ex.i);
+            }
+
+            Person p = new Person();
+            p.name = "Sooin";
+            p.callback = new EchoCallbackImpl();
+
+            e.recursiveEcho("HELLO WORLD!", p.callback);
+
+            e.hello(p);
+
+            e.asyncEcho("AsyncEchoMessage", p.callback);
 
             Thread.sleep(5000);
         } catch (Throwable t) {

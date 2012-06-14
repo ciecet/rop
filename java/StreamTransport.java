@@ -46,9 +46,7 @@ public class StreamTransport extends Transport implements Runnable {
             Buffer buf = inContext.buffer;
             while (true) {
                 buf.moveFront();
-                System.out.println("Blocked until next read");
                 buf.writeFrom(inputStream);
-                System.out.println("Got message in bytes:"+buf.size());
                 if (r == null) {
                     if (buf.size() < 4) continue;
                     int p = buf.read();
@@ -56,7 +54,7 @@ public class StreamTransport extends Transport implements Runnable {
                     p = (p<<8)+buf.read();
                     p = (p<<8)+buf.read();
                     p = -p;
-                    System.out.println("Reading from port:"+p);
+                    Log.info("Reading from port:"+p);
                     synchronized (registry) {
                         inPort = registry.getPort(p);
                         synchronized (New.class) {

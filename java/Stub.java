@@ -4,4 +4,6 @@ public class Stub {
     public Stub (Remote r) {
         remote = r;
     }
+
+    public Stub () {}
 }

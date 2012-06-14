@@ -28,7 +28,7 @@ public class ReturnReader extends Reader {
         case 1:
             value = ret;
             isValid = true;
-            return cont;
+            return cont.run(this, ctx);
         default: return null;
         }
     }

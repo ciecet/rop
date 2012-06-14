@@ -12,7 +12,6 @@ public class ReturnWriter extends Writer {
 
     public Cont write (Object _, IOContext ctx) {
         if (ctx.buffer.margin() < 1) return ctx.blocked(this);
-        System.out.println("returnindex:"+index);
         ctx.buffer.writeI8((byte)((3<<6) | (index & 63)));
         if (index == -1) {
             return cont;

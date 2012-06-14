@@ -13,18 +13,16 @@ public class MessageReader extends Reader {
             } else {
                 step = 3;
             }
-            System.out.println("reading head... head:"+head+" next step:"+step);
             return read(null, ctx);
-        case 1: // return
-            System.out.println("reading return...");
+        case 1: // read return
             ReturnReader rr = port.popReturn();
             if (rr == null) {
                 throw new IllegalStateException("No waiting return");
             }
             step++;
             return rr.start(head, this);
-        case 2: // post return
-            System.out.println("post return...");
+        case 2: // got return
+            Log.debug("got a return. idx:"+((ReturnReader)ret).index);
             synchronized (port) {
                 port.notify();
             }
@@ -36,18 +34,19 @@ public class MessageReader extends Reader {
                 release();
                 return c;
             }
-        case 3: // read call request
+        case 3: // read request
             if (ctx.buffer.size() < 6) return ctx.blocked(this);
             {
                 int oid = -ctx.buffer.readI32();
                 int mid = ctx.buffer.readI16();
                 request = port.registry.getSkeleton(oid).createRequest(head,
                         mid);
-                System.out.println("request for oid:"+oid+" mid:"+mid+" obj:"+request);
             }
             step++;
             return request.start(this);
-        case 4: // read returned
+        case 4: // got request
+            Log.debug("got a request. obj:"+request.skeleton.object+
+                    " mid:"+request.methodIndex);
             port.addRequest((Request)request);
             synchronized (port) {
                 if (port.processingThread != null) {

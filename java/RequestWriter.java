@@ -23,8 +23,8 @@ public class RequestWriter extends Writer {
             step++;
         case 1:
             if (i < arguments.size()) {
-                Object arg = arguments.get(i*2);
-                Writer w = (Writer)arguments.get(i*2+1);
+                Object arg = arguments.get(i);
+                Writer w = (Writer)arguments.get(i+1);
                 i += 2;
                 return w.start(arg, this);
             }

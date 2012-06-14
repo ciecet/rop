@@ -50,6 +50,21 @@ public class New {
         release(o.getClass(), o, reusables);
     }
 
+    public static Reader voidReader () {
+        Reader r = (Reader)get("void", readers);
+        if (r == null) {
+            r = new Reader() {
+                public Cont read (Object _, IOContext ctx) {
+                    return cont;
+                }
+                public void release () {
+                    New.releaseReader("void", this);
+                }
+            };
+        }
+        return r;
+    }
+
     public static Reader i8Reader () {
         Reader r = (Reader)get("i8", readers);
         if (r == null) {
@@ -248,7 +263,7 @@ public class New {
         Reader r = (Reader)get(name, readers);
         if (r == null) {
             try {
-                Class cls = Class.forName(name);
+                Class cls = Class.forName(name+"Reader");
                 r = (Reader)cls.newInstance();
             } catch (Throwable t) {
                 t.printStackTrace();
@@ -257,6 +272,54 @@ public class New {
             }
         }
         return r;
+    }
+
+    public static Reader interfaceReader (final String name) {
+        Reader r = (Reader)get(name, readers);
+        if (r == null) {
+            r = new Reader () {
+                public Cont read (Object _, IOContext ctx) {
+                    if (ctx.buffer.size() < 4) return ctx.blocked(this);
+                    int id = -ctx.buffer.readI32();
+                    if (id >= 0) {
+                        Skeleton skel = ctx.registry.getSkeleton(id);
+                        return cont.run(skel.object, ctx);
+                    } else {
+                        try {
+                            Remote r = ctx.registry.getRemote(id);
+                            Class cls = Class.forName(name+"Stub");
+                            Stub s = (Stub)cls.newInstance();
+                            s.remote = r;
+                            r.count++;
+                            return cont.run(s, ctx);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                            throw new UnsupportedOperationException(
+                                    "Failed to load reader:"+name, t);
+                        }
+                    }
+                }
+                public void release () {
+                    New.releaseReader(name, this);
+                }
+            };
+        }
+        return r;
+    }
+
+    public static Writer voidWriter () {
+        Writer w = (Writer)get("void", writers);
+        if (w == null) {
+            w = new Writer() {
+                public Cont write (Object _, IOContext ctx) {
+                    return cont;
+                }
+                public void release () {
+                    New.releaseWriter("void", this);
+                }
+            };
+        }
+        return w;
     }
 
     public static Writer i8Writer () {
@@ -455,13 +518,39 @@ public class New {
         Writer w = (Writer)get(name, writers);
         if (w == null) {
             try {
-                Class cls = Class.forName(name);
+                Class cls = Class.forName(name+"Writer");
                 w = (Writer)cls.newInstance();
             } catch (Throwable t) {
                 t.printStackTrace();
                 throw new UnsupportedOperationException(
                         "Failed to load reader:"+name, t);
             }
+        }
+        return w;
+    }
+
+    public static Writer interfaceWriter (final String name) {
+        Writer w = (Writer)get(name, writers);
+        if (w == null) {
+            w = new Writer () {
+                public Cont write (Object _, IOContext ctx) {
+                    if (ctx.buffer.margin() < 4) return ctx.blocked(this);
+                    if (object instanceof Exportable) {
+                        Skeleton skel = ctx.registry.getSkeleton(
+                                (Exportable)object);
+                        skel.count++;
+                        ctx.buffer.writeI32(skel.id);
+                    } else if (object instanceof Stub) {
+                        ctx.buffer.writeI32(((Stub)object).remote.id);
+                    } else {
+                        throw new IllegalStateException("invalid object");
+                    }
+                    return cont;
+                }
+                public void release () {
+                    New.releaseWriter(name, this);
+                }
+            };
         }
         return w;
     }

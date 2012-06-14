@@ -17,12 +17,12 @@ public class Buffer {
         }
     }
     public void readTo (OutputStream os) throws IOException {
-        System.out.println("send "+size()+" bytes");
+        Log.info("send "+size()+" bytes");
         String s = "";
         for (int i = begin; i < end; i++) {
             s += buffer[i]+" ";
         }
-        System.out.println(s);
+        Log.info(s);
         os.write(buffer, begin, size());
         reset();
     }
@@ -38,6 +38,7 @@ public class Buffer {
             throw new IOException("EOF");
         }
         grow(r);
+        Log.info("received "+r+" bytes");
     }
     public int size () { return end - begin; }
     public int margin () { return buffer.length - end; }
@@ -66,7 +67,7 @@ public class Buffer {
             str.append(buffer[i]);
             str.append(", ");
         }
-        System.out.println(str);
+        Log.info(str);
     }
 
     public byte readI8 () {
