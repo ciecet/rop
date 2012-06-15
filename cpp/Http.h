@@ -31,8 +31,6 @@ struct HttpReactor: FileReactor {
     STATE state;
     Buffer inBuffer;
     Buffer outBuffer;
-    // balance of request/response in keep-alive connection.
-    // Not applicable to websocket.
     string requestLine;
     map<string,string> headers;
     Buffer contentBuffer; // received http body or websocket payload
