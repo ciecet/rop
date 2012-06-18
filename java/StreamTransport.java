@@ -85,7 +85,7 @@ public class StreamTransport extends Transport implements Runnable {
         }
     }
 
-    public void notifyUnhandledRequest (final Port p) {
+    public void notifyUnhandledRequest (Port p) {
         synchronized (registry) {
             if (p.processingThread != null) {
                 synchronized (p) {
@@ -93,14 +93,7 @@ public class StreamTransport extends Transport implements Runnable {
                 }
                 return;
             }
-            p.processingThread = new Thread() {
-                public void run () {
-                    while (p.processRequest());
-                    synchronized (registry) {
-                        p.processingThread = null;
-                    }
-                }
-            };
+            p.processingThread = new Thread(p);
             p.processingThread.start();
         }
     }

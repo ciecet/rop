@@ -1,5 +1,6 @@
 import java.io.*;
 import java.util.*;
+import java.lang.ref.*;
 
 public class Registry {
 
@@ -7,6 +8,7 @@ public class Registry {
 
     private static ThreadLocal threadIds = new ThreadLocal () {
         protected synchronized Object initialValue () {
+            Log.warning("nextThreadId... :"+nextThreadId+" thread:"+Thread.currentThread());
             return new int[] { nextThreadId++, 0 }; // local / rpc
         }
     };
@@ -62,6 +64,7 @@ public class Registry {
         synchronized (this) {
             checkClosed();
             p = getPort();
+            Log.fatal("async p:"+p.id);
             p.writer = args;
             if (ret != null) {
                 p.addReturn(ret);
@@ -116,13 +119,18 @@ public class Registry {
 
     // unsafe
     public Remote getRemote (int id) {
+        Remote r = null;
         Integer id2 = New.i32(id);
-        Remote r = (Remote)remotes.get(id2);
+        WeakReference wr = (WeakReference)remotes.get(id2);
+        if (wr != null) {
+            r = (Remote)wr.get();
+        }
         if (r == null) {
             r = new Remote();
             r.id = id;
             r.registry = this;
-            remotes.put(id2, r);
+            wr = new WeakReference(r);
+            remotes.put(id2, wr);
         }
         return r;
     }

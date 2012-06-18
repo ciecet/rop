@@ -1,4 +1,4 @@
-public class Port implements Reusable {
+public class Port implements Reusable, Runnable {
 
     int id;
     Registry registry;
@@ -118,5 +118,24 @@ public class Port implements Reusable {
 
     public void release () {
         // not used directly.
+    }
+
+    public void run () {
+        while (true) {
+            while (processRequest());
+
+            synchronized (this) {
+                try {
+                    wait(2000);
+                } catch (InterruptedException e) {}
+            }
+
+            synchronized (registry) {
+                if (requests == null) {
+                    processingThread = null;
+                    return;
+                }
+            }
+        }
     }
 }

@@ -49,6 +49,9 @@ public class Test {
 
     public static void main (String[] args) {
         test1();
+        System.gc();
+        System.gc();
+        System.gc();
     }
 
     public static void test1 () {
