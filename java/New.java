@@ -50,6 +50,15 @@ public class New {
         release(o.getClass(), o, reusables);
     }
 
+    public static Port port (Registry reg) {
+        Port p = (Port)get(Port.class, reusables);
+        if (p == null) {
+            p = new Port();
+        }
+        p.registry = reg;
+        return p;
+    }
+
     public static Reader voidReader () {
         Reader r = (Reader)get("void", readers);
         if (r == null) {

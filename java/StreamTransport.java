@@ -56,6 +56,9 @@ public class StreamTransport extends Transport implements Runnable {
                     p = -p;
                     Log.info("Reading from port:"+p);
                     synchronized (registry) {
+                        if (inPort != null) {
+                            inPort.deref();
+                        }
                         inPort = registry.getPort(p);
                         synchronized (New.class) {
                             r = New.messageReader(inPort).start(null);
@@ -83,14 +86,17 @@ public class StreamTransport extends Transport implements Runnable {
     }
 
     public void notifyUnhandledRequest (final Port p) {
-        synchronized (p) {
+        synchronized (registry) {
             if (p.processingThread != null) {
-                throw new IllegalStateException("request is being processed.");
+                synchronized (p) {
+                    p.notify();
+                }
+                return;
             }
             p.processingThread = new Thread() {
                 public void run () {
                     while (p.processRequest());
-                    synchronized (p) {
+                    synchronized (registry) {
                         p.processingThread = null;
                     }
                 }

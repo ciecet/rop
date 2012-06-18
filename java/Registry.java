@@ -19,7 +19,7 @@ public class Registry {
     private Map remotes = new HashMap();
     private Map skeletons = new HashMap();
     private Map skeletonByExportable = new IdentityHashMap();
-    private Map ports = new HashMap();
+    public Map ports = new HashMap();
     private boolean isClosed = false;
 
     public final Transport transport;
@@ -47,22 +47,16 @@ public class Registry {
     public Port getPort (int pid) {
         Port p = (Port)ports.get(New.i32(pid));
         if (p == null) {
-            p = new Port(this);
+            synchronized (New.class) {
+                p = New.port(this);
+            }
             p.id = pid;
             ports.put(New.i32(pid), p);
         }
-        p.useCount++;
+        p.ref();
         return p;
     }
-
-    // unsafe
-    public void releasePort (Port p) {
-        if (--p.useCount > 0) {
-            return;
-        }
-        ports.remove(New.i32(p.id));
-    }
-
+    
     void asyncCall (Writer args, ReturnReader ret) {
         Port p;
         synchronized (this) {
@@ -75,7 +69,7 @@ public class Registry {
         }
         transport.send(p);
         synchronized (this) {
-            releasePort(p);
+            p.deref();
         }
     }
 
@@ -101,7 +95,7 @@ public class Registry {
 
         synchronized (this) {
             p.processingThread = oldProcessingThread;
-            releasePort(p);
+            p.deref();
         }
 
         if (ret.index == -1) {

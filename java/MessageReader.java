@@ -26,9 +26,6 @@ public class MessageReader extends Reader {
             synchronized (port) {
                 port.notify();
             }
-            synchronized (port.registry) {
-                port.registry.releasePort(port);
-            }
             synchronized (New.class) {
                 Cont c = cont;
                 release();
@@ -45,19 +42,10 @@ public class MessageReader extends Reader {
             step++;
             return request.start(this);
         case 4: // got request
-            Log.debug("got a request. obj:"+request.skeleton.object+
-                    " mid:"+request.methodIndex);
+            Log.debug("got a request. obj:" + request.skeleton.object +
+                    " mid:" + request.methodIndex+" req:"+request);
             port.addRequest((Request)request);
-            synchronized (port) {
-                if (port.processingThread != null) {
-                    port.notify();
-                } else {
-                    port.registry.transport.notifyUnhandledRequest(port);
-                }
-            }
-            synchronized (port.registry) {
-                port.registry.releasePort(port);
-            }
+            port.registry.transport.notifyUnhandledRequest(port);
             synchronized (New.class) {
                 Cont c = cont;
                 release();
