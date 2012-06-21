@@ -2,129 +2,106 @@ import java.util.*;
 
 public class EchoSkel extends Skeleton {
 
+    private static final Codec[] codecs = new Codec[] {
+        StringCodec.instance,
+        new ListCodec(StringCodec.instance),
+        VoidCodec.instance, 
+        TestExceptionCodec.instance,
+        new InterfaceCodec(EchoCallbackStub.class),
+        PersonCodec.instance
+    };
+
     public EchoSkel (Echo e) {
         object = e;
     }
 
-    public Request createRequest (int h, int mid) {
-        synchronized (New.class) {
-            Request req = New.request(h, this, mid);
-            switch (mid) {
-            case 0:
-                req.addReader(New.stringReader());
-                req.ret.addWriter(New.stringWriter());
-                break;
-            case 1:
-                req.addReader(New.listReader(New.stringReader()));
-                req.ret.addWriter(New.stringWriter());
-                break;
-            case 2:
-                req.ret.addWriter(New.voidWriter());
-                req.ret.addWriter(New.writer("TestException"));
-                Log.debug(req);
-                break;
-            case 3:
-                req.addReader(New.stringReader());
-                req.addReader(New.interfaceReader("EchoCallback"));
-                req.ret.addWriter(New.voidWriter());
-                break;
-            case 4:
-                req.addReader(New.reader("Person"));
-                req.ret.addWriter(New.voidWriter());
-                break;
-            case 5:
-                req.addReader(New.stringReader());
-                req.addReader(New.interfaceReader("EchoCallback"));
-                break;
-            default:
-                req.release();
-                req = null;
-            }
-            return req;
+    public void processRequest (LocalCall lc) {
+        switch (lc.buffer.readI16()) {
+        case 0: __call_echo(lc); return;
+        case 1: __call_concat(lc); return;
+        case 2: __call_touchmenot(lc); return;
+        case 3: __call_recursiveEcho(lc); return;
+        case 4: __call_hello(lc); return;
+        case 5: __call_asyncEcho(lc); return;
+        default: return;
         }
     }
 
-    public void call (Request req) {
-        switch (req.methodIndex) {
-        case 0:
-            __call_echo(req.arguments, req.ret);
-            return;
-        case 1:
-            __call_concat(req.arguments, req.ret);
-            return;
-        case 2:
-            __call_touchmenot(req.arguments, req.ret);
-            return;
-        case 3:
-            __call_recursiveEcho(req.arguments, req.ret);
-            return;
-        case 4:
-            __call_hello(req.arguments, req.ret);
-            return;
-        case 5:
-            __call_asyncEcho(req.arguments, req.ret);
-            return;
-        default:
-            return;
-        }
-    }
-
-    public void __call_echo (List args, ReturnWriter ret) {
+    public void __call_echo (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
-            ret.value = ((Echo)object).echo((String)args.get(0));
-            ret.index = 0;
+            String arg0 = (String)codecs[0].read(buf);
+            lc.value = ((Echo)object).echo(arg0);
+            lc.codec = codecs[0];
+            lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
-            ret.index = -1;
+            lc.index = -1;
         }
     }
 
-    public void __call_concat (List args, ReturnWriter ret) {
+    public void __call_concat (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
-            ret.value = ((Echo)object).concat((List)args.get(0));
-            ret.index = 0;
+            List arg0 = (List)codecs[1].read(buf);
+            lc.value = ((Echo)object).concat(arg0);
+            lc.codec = codecs[0];
+            lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
-            ret.index = -1;
+            lc.index = -1;
         }
     }
 
-    public void __call_touchmenot (List args, ReturnWriter ret) {
+    public void __call_touchmenot (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
             ((Echo)object).touchmenot();
-            ret.index = 0;
+            lc.index = 0;
         } catch (TestException e) {
-            ret.value = e;
-            ret.index = 1;
+            lc.value = e;
+            lc.codec = codecs[3];
+            lc.index = 1;
         } catch (Throwable t) {
             t.printStackTrace();
-            ret.index = -1;
+            lc.index = -1;
         }
     }
 
-    public void __call_recursiveEcho (List args, ReturnWriter ret) {
+    public void __call_recursiveEcho (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
-            ((Echo)object).recursiveEcho((String)args.get(0), (EchoCallback)args.get(1));
-            ret.index = 0;
+            String arg0 = (String)codecs[0].read(buf);
+            EchoCallback arg1 = (EchoCallback)codecs[4].read(buf);
+            ((Echo)object).recursiveEcho(arg0, arg1);
+            lc.codec = codecs[2];
+            lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
-            ret.index = -1;
+            lc.index = -1;
         }
     }
 
-    public void __call_hello (List args, ReturnWriter ret) {
+    public void __call_hello (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
-            ((Echo)object).hello((Person)args.get(0));
-            ret.index = 0;
+            Person arg0 = (Person)codecs[5].read(buf);
+            ((Echo)object).hello(arg0);
+            lc.codec = codecs[2];
+            lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
-            ret.index = -1;
+            lc.index = -1;
         }
     }
 
-    public void __call_asyncEcho (List args, ReturnWriter ret) {
+    public void __call_asyncEcho (LocalCall lc) {
+        Buffer buf = lc.buffer;
         try {
-            ((Echo)object).asyncEcho((String)args.get(0), (EchoCallback)args.get(1));
+            String arg0 = (String)codecs[0].read(buf);
+            EchoCallback arg1 = (EchoCallback)codecs[4].read(buf);
+
+            ((Echo)object).asyncEcho(arg0, arg1);
         } catch (Throwable t) {
             t.printStackTrace();
         }

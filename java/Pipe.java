@@ -17,7 +17,7 @@ public class Pipe {
                     buffer = null;
                     Pipe.this.notify();
                 }
-                return (int)d;
+                return d & 0xff;
             }
         }
         public int read(byte b[], int off, int len) throws IOException {

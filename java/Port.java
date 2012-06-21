@@ -1,123 +1,98 @@
 public class Port implements Reusable, Runnable {
 
+    public static final int MESSAGE_SYNC_CALL = 0;
+    public static final int MESSAGE_ASYNC_CALL = 1;
+    public static final int MESSAGE_CHAINED_CALL = 2;
+    public static final int MESSAGE_RETURN = 3;
+
     int id;
     Registry registry;
-    int useCount;
 
-    ReturnReader returns, returnsTail;
-    Request requests, requestsTail, lastRequest;
+    public RemoteCall remoteCalls;
+    public LocalCall localCalls;
+    public Object deferredReturn;
 
-    Writer writer;
-    Reader reader;
-    Cont writeCont;
-    Cont readCont;
+    private RemoteCall remoteCallsTail;
+    private LocalCall localCallsTail;
 
-    Thread processingThread; // non-null if processes are to be processed.
+    public Thread processingThread; // non-null if being processed.
 
-    // waiting line for sending.
-    Port next;
-
-    public Port () {
-        //registry = reg;
+    public void reset () {
+        registry = null;
+        remoteCalls = remoteCallsTail = null;
+        localCalls = localCallsTail = null;
+        deferredReturn = null;
+        processingThread = null;
     }
 
-    public void addReturn (ReturnReader ret) {
-        if (returnsTail == null) {
-            returns = returnsTail = ret;
+    // register remote call object which is waiting for return value.
+    public void addRemoteCall (RemoteCall rc) {
+        if (remoteCallsTail == null) {
+            remoteCalls = remoteCallsTail = rc;
             return;
         }
-        returnsTail.next = ret;
-        returnsTail = ret;
+        remoteCallsTail.next = rc;
+        remoteCallsTail = rc;
     }
 
-    public ReturnReader popReturn () {
-        ReturnReader ret = returns;
-        if (ret != null) {
-            returns = ret.next;
-            ret.next = null;
-            if (ret == returnsTail) {
-                returnsTail = null;
+    public RemoteCall removeRemoteCall () {
+        RemoteCall rc = remoteCalls;
+        if (rc != null) {
+            remoteCalls = rc.next;
+            rc.next = null;
+            if (rc == remoteCallsTail) {
+                remoteCallsTail = null;
             }
         }
-        return ret;
+        return rc;
     }
 
-    public void addRequest (Request req) {
-        if (requestsTail == null) {
-            requests = requestsTail = req;
+    public void addLocalCall (LocalCall lc) {
+        if (localCallsTail == null) {
+            localCalls = localCallsTail = lc;
             return;
         }
-        requestsTail.next = req;
-        requestsTail = req;
+        localCallsTail.next = lc;
+        localCallsTail = lc;
     }
 
-    public Request popRequest () {
-        Request req = requests;
-        if (req != null) {
-            requests = req.next;
-            req.next = null;
-            if (req == requestsTail) {
-                requestsTail = null;
+    public LocalCall removeLocalCall () {
+        LocalCall lc = localCalls;
+        if (lc != null) {
+            localCalls = lc.next;
+            lc.next = null;
+            if (lc == localCallsTail) {
+                localCallsTail = null;
             }
         }
-        return req;
+        return lc;
     }
 
     boolean processRequest () {
-        Request req = null;
-        Request lreq = null;
+        LocalCall lc = null;
         synchronized (registry) {
-            req = popRequest();
-            if (req == null) return false;
+            lc = removeLocalCall();
+            if (lc == null) return false;
         }
-        lreq = lastRequest;
-        lastRequest = null;
         
         int[] tids = (int[])registry.getThreadIds();
         int otid = tids[1];
-        tids[1] = ((req.messageHead & (0x1<<6)) > 0) ? tids[0]: id;
-        req.call();
+        tids[1] = (lc.getMessageType() == MESSAGE_SYNC_CALL) ? id : tids[0];
+        lc.skeleton.processRequest(lc);
         tids[1] = otid;
 
-        if (lastRequest != null) {
-            synchronized (New.class) {
-                lastRequest.release();
-            }
+        switch (lc.getMessageType()) {
+        case MESSAGE_SYNC_CALL:
+            registry.transport.send(this, lc.makeReturnMessage(this));
+            deferredReturn = null;
+            break;
+        case MESSAGE_CHAINED_CALL:
+            deferredReturn = lc.value;
+            break;
         }
-        lastRequest = req;
-        if (req.ret.writers.size() > 0) {
-            writer = req.ret;
-            registry.transport.send(this);
-        }
+
+        New.release(lc);
         return true;
-    }
-
-    // should be called under registry lock.
-    public void ref () {
-        useCount++;
-    }
-
-    // should be called under registry lock.
-    public void deref () {
-        useCount--;
-        tryRelease();
-    }
-
-    public void tryRelease () {
-        if (useCount > 0 || processingThread != null ||
-                lastRequest != null) {
-            return;
-        }
-        synchronized (registry) {
-            synchronized (New.class) {
-                registry.ports.remove(New.i32(id));
-                New.releaseReusable(this);
-            }
-        }
-    }
-
-    public void release () {
-        // not used directly.
     }
 
     public void run () {
@@ -131,8 +106,9 @@ public class Port implements Reusable, Runnable {
             }
 
             synchronized (registry) {
-                if (requests == null) {
+                if (localCalls == null) {
                     processingThread = null;
+                    registry.tryReleasePort(this);
                     return;
                 }
             }

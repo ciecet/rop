@@ -59,15 +59,18 @@ public class Test {
             Pipe p0 = new Pipe();
             Pipe p1 = new Pipe();
             Log.info("Created pipes");
-            Transport t0 = new StreamTransport(p1.inputStream, p0.outputStream);
-            Transport t1 = new StreamTransport(p0.inputStream, p1.outputStream);
+            StreamTransport t0 = new StreamTransport(
+                    p1.inputStream, p0.outputStream);
+            StreamTransport t1 = new StreamTransport(
+                    p0.inputStream, p1.outputStream);
             Log.info("Created Transports");
 
             Log.info("Register Echo");
             t1.registry.registerExportable("Echo", new EchoImpl());
 
             Log.info("Request stub for Echo");
-            Echo e = new EchoStub(t0.registry.getRemote("Echo"));
+            EchoStub e = new EchoStub();
+            e.remote = t0.registry.getRemote("Echo");
 
             Log.info("got echo?:"+e.echo("hi!").equals("hi!"));
             List a = new ArrayList();
@@ -93,7 +96,12 @@ public class Test {
 
             e.asyncEcho("AsyncEchoMessage", p.callback);
 
-            Thread.sleep(5000);
+            Thread.sleep(2000);
+
+            Log.info("closing t1");
+            t1.dispose();
+
+            Thread.sleep(2000);
         } catch (Throwable t) {
             t.printStackTrace();
         }
