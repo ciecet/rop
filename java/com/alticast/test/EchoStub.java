@@ -12,6 +12,7 @@ public class EchoStub extends Stub implements Echo {
    private static final Codec codec3 = com.alticast.test.TestExceptionCodec.instance;
    private static final Codec codec4 = new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class);
    private static final Codec codec5 = com.alticast.test.PersonCodec.instance;
+   private static final Codec codec6 = com.alticast.rop.I32Codec.instance;
 
     public String echo (String msg) {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
@@ -92,6 +93,20 @@ public class EchoStub extends Stub implements Echo {
             codec0.write(msg, buf);
             codec4.write(cb, buf);
             remote.registry.asyncCall(rc, false);
+        } finally {
+            New.release(rc);
+        }
+    }
+    public int doubleit (int i) {
+        RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
+        try {
+            Buffer buf = rc.init(0<<6, remote, 6);
+            buf.writeI32(i);
+            remote.registry.syncCall(rc);
+            switch (buf.readI8() & 63) {
+            case 0: return buf.readI32();
+            default: throw new RemoteException("Remote Call Failed.");
+            }
         } finally {
             New.release(rc);
         }

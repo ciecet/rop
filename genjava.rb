@@ -161,6 +161,15 @@ class TypeNode
             end
         end
     end
+
+    def wrap v
+        case name
+        when "i8", "i16", "i32", "i64"
+            "New.#{name}(#{v})"
+        else
+            v
+        end
+    end
 end
 
 def makeCodecCache types
@@ -414,7 +423,7 @@ public class #{name}Skel extends Skeleton {
         Buffer __buf = lc.buffer;
         try {
 #{m.argumentTypes.map { |t|
-"            #{t.cname} #{t.variable} = #{t.oread("__buf", ccache)};\n"
+"            #{t.oname} #{t.variable} = #{t.oread("__buf", ccache)};\n"
 }.join}\
 #{
     callstr = "((#{name})object).#{m.name}(#{
@@ -427,7 +436,7 @@ public class #{name}Skel extends Skeleton {
             lc.codec = #{ccache[rt.codec]};
             lc.index = 0;)
     else %(\
-            lc.value = #{callstr};
+            lc.value = #{rt.wrap(callstr)};
             lc.codec = #{ccache[rt.codec]};
             lc.index = 0;)
     end

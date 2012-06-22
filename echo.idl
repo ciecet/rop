@@ -20,5 +20,6 @@ package test {
         void recursiveEcho (String msg, EchoCallback cb);
         void hello (Person p);
         async asyncEcho (String msg, EchoCallback cb);
+        i32 doubleit (i32 i);
     }
 }

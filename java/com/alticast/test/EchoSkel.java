@@ -12,6 +12,7 @@ public class EchoSkel extends Skeleton {
    private static final Codec codec3 = com.alticast.test.TestExceptionCodec.instance;
    private static final Codec codec4 = new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class);
    private static final Codec codec5 = com.alticast.test.PersonCodec.instance;
+   private static final Codec codec6 = com.alticast.rop.I32Codec.instance;
 
     public EchoSkel (Echo o) {
         object = o;
@@ -25,6 +26,7 @@ public class EchoSkel extends Skeleton {
         case 3: __call_recursiveEcho(lc); return;
         case 4: __call_hello(lc); return;
         case 5: __call_asyncEcho(lc); return;
+        case 6: __call_doubleit(lc); return;
         default: throw new RemoteException("Out of method index range.");
         }
     }
@@ -94,6 +96,17 @@ public class EchoSkel extends Skeleton {
             String msg = (String)(codec0.read(__buf));
             com.alticast.test.EchoCallback cb = (com.alticast.test.EchoCallback)(codec4.read(__buf));
             ((Echo)object).asyncEcho(msg, cb);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+    private void __call_doubleit (LocalCall lc) {
+        Buffer __buf = lc.buffer;
+        try {
+            int i = __buf.readI32();
+            lc.value = New.i32(((Echo)object).doubleit(i));
+            lc.codec = codec6;
+            lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
         }

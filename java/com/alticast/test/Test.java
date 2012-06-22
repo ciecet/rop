@@ -47,6 +47,10 @@ public class Test {
         public void asyncEcho (String msg, EchoCallback cb) {
             cb.call("Hi again~ "+msg);
         }
+
+        public int doubleit (int i) {
+            return i*2;
+        }
     }
 
     public static void main (String[] args) {
@@ -97,6 +101,8 @@ public class Test {
             e.hello(p);
 
             e.asyncEcho("AsyncEchoMessage", p.callback);
+
+            Log.info("15 * 2 : "+e.doubleit(15));
 
             Thread.sleep(2000);
 

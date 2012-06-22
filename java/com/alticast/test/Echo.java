@@ -11,4 +11,5 @@ public interface Echo {
     void recursiveEcho (String msg, com.alticast.test.EchoCallback cb);
     void hello (com.alticast.test.Person p);
     void asyncEcho (String msg, com.alticast.test.EchoCallback cb);
+    int doubleit (int i);
 }
