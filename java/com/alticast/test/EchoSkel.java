@@ -5,6 +5,14 @@ import com.alticast.test.TestException;
 import com.alticast.test.EchoCallback;
 import com.alticast.test.Person;
 public class EchoSkel extends Skeleton {
+
+   private static final Codec codec0 = com.alticast.rop.StringCodec.instance;
+   private static final Codec codec1 = new com.alticast.rop.ListCodec(com.alticast.rop.StringCodec.instance);
+   private static final Codec codec2 = com.alticast.rop.VoidCodec.instance;
+   private static final Codec codec3 = com.alticast.test.TestExceptionCodec.instance;
+   private static final Codec codec4 = new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class);
+   private static final Codec codec5 = com.alticast.test.PersonCodec.instance;
+
     public EchoSkel (Echo o) {
         object = o;
     }
@@ -24,9 +32,9 @@ public class EchoSkel extends Skeleton {
     private void __call_echo (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            String msg = (String)(com.alticast.rop.StringCodec.instance.read(__buf));
+            String msg = (String)(codec0.read(__buf));
             lc.value = ((Echo)object).echo(msg);
-            lc.codec = com.alticast.rop.StringCodec.instance;
+            lc.codec = codec0;
             lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -35,9 +43,9 @@ public class EchoSkel extends Skeleton {
     private void __call_concat (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            List msgs = (List)(new com.alticast.rop.ListCodec(com.alticast.rop.StringCodec.instance).read(__buf));
+            List msgs = (List)(codec1.read(__buf));
             lc.value = ((Echo)object).concat(msgs);
-            lc.codec = com.alticast.rop.StringCodec.instance;
+            lc.codec = codec0;
             lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -47,11 +55,11 @@ public class EchoSkel extends Skeleton {
         Buffer __buf = lc.buffer;
         try {
             ((Echo)object).touchmenot();
-            lc.codec = com.alticast.rop.VoidCodec.instance;
+            lc.codec = codec2;
             lc.index = 0;
         } catch (com.alticast.test.TestException e) {
             lc.value = e;
-            lc.codec = com.alticast.test.TestExceptionCodec.instance;
+            lc.codec = codec3;
             lc.index = 1;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -60,10 +68,10 @@ public class EchoSkel extends Skeleton {
     private void __call_recursiveEcho (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            String msg = (String)(com.alticast.rop.StringCodec.instance.read(__buf));
-            com.alticast.test.EchoCallback cb = (com.alticast.test.EchoCallback)(new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class).read(__buf));
+            String msg = (String)(codec0.read(__buf));
+            com.alticast.test.EchoCallback cb = (com.alticast.test.EchoCallback)(codec4.read(__buf));
             ((Echo)object).recursiveEcho(msg, cb);
-            lc.codec = com.alticast.rop.VoidCodec.instance;
+            lc.codec = codec2;
             lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -72,9 +80,9 @@ public class EchoSkel extends Skeleton {
     private void __call_hello (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            com.alticast.test.Person p = (com.alticast.test.Person)(com.alticast.test.PersonCodec.instance.read(__buf));
+            com.alticast.test.Person p = (com.alticast.test.Person)(codec5.read(__buf));
             ((Echo)object).hello(p);
-            lc.codec = com.alticast.rop.VoidCodec.instance;
+            lc.codec = codec2;
             lc.index = 0;
         } catch (Throwable t) {
             t.printStackTrace();
@@ -83,8 +91,8 @@ public class EchoSkel extends Skeleton {
     private void __call_asyncEcho (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            String msg = (String)(com.alticast.rop.StringCodec.instance.read(__buf));
-            com.alticast.test.EchoCallback cb = (com.alticast.test.EchoCallback)(new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class).read(__buf));
+            String msg = (String)(codec0.read(__buf));
+            com.alticast.test.EchoCallback cb = (com.alticast.test.EchoCallback)(codec4.read(__buf));
             ((Echo)object).asyncEcho(msg, cb);
         } catch (Throwable t) {
             t.printStackTrace();

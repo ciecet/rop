@@ -110,23 +110,23 @@ class TypeNode
         JAVA_OTYPES[name] || cname
     end
 
-    def oread buf
+    def oread buf, ccache = {}
         case name
         when "i8"; "#{buf}.readI8()"
         when "i16"; "#{buf}.readI16()"
         when "i32"; "#{buf}.readI32()"
         when "i64"; "#{buf}.readI64()"
-        else "(#{cname})(#{codec}.read(#{buf}))"
+        else "(#{cname})(#{ccache[codec] || codec}.read(#{buf}))"
         end
     end
 
-    def owrite obj, buf
+    def owrite obj, buf, ccache = {}
         case name
         when "i8"; "#{buf}.writeI8(#{obj})"
         when "i16"; "#{buf}.writeI16(#{obj})"
         when "i32"; "#{buf}.writeI32(#{obj})"
         when "i64"; "#{buf}.writeI64(#{obj})"
-        else "#{codec}.write(#{obj}, #{buf})"
+        else "#{ccache[codec] || codec}.write(#{obj}, #{buf})"
         end
     end
 
@@ -163,6 +163,25 @@ class TypeNode
     end
 end
 
+def makeCodecCache types
+    cc = {}
+    id = 0
+    types.each { |t|
+        c = t.codec
+        next if c == nil
+        next if cc.has_key?(c)
+        cc[c] = "codec#{id}"
+        id += 1
+    }
+    return cc
+end
+
+def declareCodeCache ccache
+    ccache.keys.map { |c|
+        "   private static final Codec #{ccache[c]} = #{c};\n"
+    }.join
+end
+
 def generate packages
 
     packages.each { |pkg|
@@ -194,6 +213,7 @@ public class #{name} extends Exception {
             }
 
             open("#{pkg.dir}/#{name}Codec.java", "w") { |f|
+                ccache = makeCodecCache(exp.fieldTypes)
                 f.puts <<-TEMPLATE
 package #{pkg.cname};
 import #{ROP_PREFIX}*;
@@ -203,12 +223,13 @@ import java.util.*;
 }.join("\n")}
 public class #{name}Codec implements Codec {
 
+#{declareCodeCache(ccache)}
     public static final #{name}Codec instance = new #{name}Codec();
 
     public Object read (Buffer buf) {
         #{name} o = new #{name}();
-#{exp.fieldTypes.map { |t|
-"        o.#{t.variable} = #{t.oread("buf")};"
+#{exp.fieldTypes.map { |t| "\
+        o.#{t.variable} = #{t.oread("buf", ccache)};"
 }.join("\n")}
         return o;
     }
@@ -216,7 +237,7 @@ public class #{name}Codec implements Codec {
     public void write (Object obj, Buffer buf) {
         #{name} o = (#{name})obj;
 #{exp.fieldTypes.map { |t|
-"        #{t.owrite("o.#{t.variable}", "buf")};"
+"        #{t.owrite("o.#{t.variable}", "buf", ccache)};"
 }.join("\n")}
     }
 }
@@ -250,6 +271,7 @@ public class #{name} {
             }
 
             open("#{pkg.dir}/#{name}Codec.java", "w") { |f|
+                ccache = makeCodecCache(st.fieldTypes)
                 f.puts <<-TEMPLATE
 package #{pkg.cname};
 import #{ROP_PREFIX}*;
@@ -259,12 +281,13 @@ import java.util.*;
 }.join("\n")}
 public class #{name}Codec implements Codec {
 
+#{declareCodeCache(ccache)}
     public static final #{name}Codec instance = new #{name}Codec();
 
     public Object read (Buffer buf) {
         #{name} o = new #{name}();
 #{st.fieldTypes.map { |t|
-"        o.#{t.variable} = #{t.oread("buf")};"
+"        o.#{t.variable} = #{t.oread("buf", ccache)};"
 }.join("\n")}
         return o;
     }
@@ -272,7 +295,7 @@ public class #{name}Codec implements Codec {
     public void write (Object obj, Buffer buf) {
         #{name} o = (#{name})obj;
 #{st.fieldTypes.map { |t|
-"        #{t.owrite("o.#{t.variable}", "buf")};"
+"        #{t.owrite("o.#{t.variable}", "buf", ccache)};"
 }.join("\n")}
     }
 }
@@ -305,6 +328,9 @@ end};"
                 TEMPLATE
             }
 
+            ccache = makeCodecCache(intf.methods.map { |m|
+                    m.returnTypes + m.argumentTypes }.flatten)
+
             open("#{pkg.dir}/#{name}Stub.java", "w") { |f|
                 f.puts <<-TEMPLATE
 package #{pkg.cname};
@@ -314,32 +340,34 @@ import java.util.*;
     "import #{t.cname};"
 }.join("\n")}
 public class #{name}Stub extends Stub implements #{name} {
+
+#{declareCodeCache(ccache)}
                 TEMPLATE
                 intf.methods.each_index { |mi|
                     m = intf.methods[mi]
                     rt = m.returnTypes[0]
-                    async = rt.name == "async"
+                    async = (rt.name == "async")
                     f.puts <<-TEMPLATE
     public #{rt.oname} #{m.name} (#{
         m.argumentTypes.map { |t| "#{t.oname} #{t.variable}" }.join(", ")
-    }) #{
+    })#{
         if m.returnTypes.size > 1
-            "throws #{m.returnTypes[1..-1].map { |rt| "#{rt.cname}" }.join(", ")}"
+            " throws #{m.returnTypes[1..-1].map { |t| "#{t.cname}" }.join(", ")}"
         end
-    }{
+    } {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(#{async ? 1 : 0}<<6, remote, #{mi});
 #{m.argumentTypes.map{ |t|
-"            #{t.owrite(t.variable, "buf")};"
+"            #{t.owrite(t.variable, "buf", ccache)};"
 }.join("\n")}
             remote.registry.#{async ? "asyncCall(rc, false)" : "syncCall(rc)"};
 #{%(\
             switch (buf.readI8() & 63) {
-            case 0: return#{" #{rt.oread("buf")}" if rt.name != "void"};
-#{(1...m.returnTypes.size).map { |ri|
-    rt = m.returnTypes[ri]
-"            case #{ri}: throw #{rt.oread("buf")};\n"
+            case 0: return#{" #{rt.oread("buf", ccache)}" if rt.name != "void"};
+#{(1...m.returnTypes.size).map { |i|
+    t = m.returnTypes[i]
+"            case #{i}: throw #{t.oread("buf", ccache)};\n"
 }.join}\
             default: throw new RemoteException("Remote Call Failed.");
             }
@@ -362,6 +390,8 @@ import java.util.*;
     "import #{t.cname};"
 }.join("\n")}
 public class #{name}Skel extends Skeleton {
+
+#{declareCodeCache(ccache)}
     public #{name}Skel (#{name} o) {
         object = o;
     }
@@ -384,7 +414,7 @@ public class #{name}Skel extends Skeleton {
         Buffer __buf = lc.buffer;
         try {
 #{m.argumentTypes.map { |t|
-"            #{t.cname} #{t.variable} = #{t.oread("__buf")};\n"
+"            #{t.cname} #{t.variable} = #{t.oread("__buf", ccache)};\n"
 }.join}\
 #{
     callstr = "((#{name})object).#{m.name}(#{
@@ -394,11 +424,11 @@ public class #{name}Skel extends Skeleton {
             #{callstr};)
     when "void"; %(\
             #{callstr};
-            lc.codec = #{rt.codec};
+            lc.codec = #{ccache[rt.codec]};
             lc.index = 0;)
     else %(\
             lc.value = #{callstr};
-            lc.codec = #{rt.codec};
+            lc.codec = #{ccache[rt.codec]};
             lc.index = 0;)
     end
 }
@@ -406,7 +436,7 @@ public class #{name}Skel extends Skeleton {
     t = m.returnTypes[ti]; %(\
         } catch (#{t.cname} e) {
             lc.value = e;
-            lc.codec = #{t.codec};
+            lc.codec = #{ccache[t.codec]};
             lc.index = #{ti};
 )}.join}\
         } catch (Throwable t) {

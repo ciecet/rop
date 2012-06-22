@@ -3,6 +3,9 @@ import com.alticast.rop.*;
 import java.util.*;
 
 public class EchoCallbackSkel extends Skeleton {
+
+   private static final Codec codec0 = com.alticast.rop.StringCodec.instance;
+
     public EchoCallbackSkel (EchoCallback o) {
         object = o;
     }
@@ -17,7 +20,7 @@ public class EchoCallbackSkel extends Skeleton {
     private void __call_call (LocalCall lc) {
         Buffer __buf = lc.buffer;
         try {
-            String msg = (String)(com.alticast.rop.StringCodec.instance.read(__buf));
+            String msg = (String)(codec0.read(__buf));
             ((EchoCallback)object).call(msg);
         } catch (Throwable t) {
             t.printStackTrace();

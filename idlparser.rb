@@ -173,12 +173,16 @@ InterfaceNode = Struct.new(:name, :methods)
 MethodNode = Struct.new(:name, :returnTypes, :argumentTypes)
 TypeNode = Struct.new(:name, :subTypes, :variable, :package)
 class TypeNode 
-    def check p
+    def resolve p, isReturnType = false
         self.package = p
         if subTypes
             subTypes.each { |st|  
-                st.check p
+                st.resolve p
             }
+        end
+
+        if !isReturnType && %w(void async).include?(name)
+            throw "package #{p.name} used void/async as non-return type"
         end
 
         return if %w(void async String Map List Nullable i8 i16 i32).include?(name)
@@ -217,24 +221,24 @@ IDLParser = RDParser.new do
 
             p.structs.each { |_,s|
                 s.fieldTypes.each { |t|
-                    t.check p
+                    t.resolve p
                 }
             }
             p.exceptions.each { |_,e|
                 e.fieldTypes.each { |t|
-                    t.check p
+                    t.resolve p
                 }
             }
             p.interfaces.each { |_,intf|
                 intf.methods.each { |m|
                     m.returnTypes.each { |t|
-                        t.check p
+                        t.resolve p, true
                     }
                     m.returnTypes[1..-1].each { |t|
                         throw "Non exception type #{t}" unless p.exceptions.has_key?(t.name)
                     }
                     m.argumentTypes.each { |t|
-                        t.check p
+                        t.resolve p
                     }
                 }
             }

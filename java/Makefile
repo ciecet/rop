@@ -3,5 +3,6 @@
 SRCS = $(shell find * -name \*.java)
 
 all:
-	javac $(SRCS)
+	mkdir -p out
+	javac -d out $(SRCS)
     

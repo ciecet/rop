@@ -5,14 +5,22 @@ import com.alticast.test.TestException;
 import com.alticast.test.EchoCallback;
 import com.alticast.test.Person;
 public class EchoStub extends Stub implements Echo {
+
+   private static final Codec codec0 = com.alticast.rop.StringCodec.instance;
+   private static final Codec codec1 = new com.alticast.rop.ListCodec(com.alticast.rop.StringCodec.instance);
+   private static final Codec codec2 = com.alticast.rop.VoidCodec.instance;
+   private static final Codec codec3 = com.alticast.test.TestExceptionCodec.instance;
+   private static final Codec codec4 = new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class);
+   private static final Codec codec5 = com.alticast.test.PersonCodec.instance;
+
     public String echo (String msg) {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(0<<6, remote, 0);
-            com.alticast.rop.StringCodec.instance.write(msg, buf);
+            codec0.write(msg, buf);
             remote.registry.syncCall(rc);
             switch (buf.readI8() & 63) {
-            case 0: return (String)(com.alticast.rop.StringCodec.instance.read(buf));
+            case 0: return (String)(codec0.read(buf));
             default: throw new RemoteException("Remote Call Failed.");
             }
         } finally {
@@ -23,17 +31,17 @@ public class EchoStub extends Stub implements Echo {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(0<<6, remote, 1);
-            new com.alticast.rop.ListCodec(com.alticast.rop.StringCodec.instance).write(msgs, buf);
+            codec1.write(msgs, buf);
             remote.registry.syncCall(rc);
             switch (buf.readI8() & 63) {
-            case 0: return (String)(com.alticast.rop.StringCodec.instance.read(buf));
+            case 0: return (String)(codec0.read(buf));
             default: throw new RemoteException("Remote Call Failed.");
             }
         } finally {
             New.release(rc);
         }
     }
-    public void touchmenot () throws com.alticast.test.TestException{
+    public void touchmenot () throws com.alticast.test.TestException {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(0<<6, remote, 2);
@@ -41,7 +49,7 @@ public class EchoStub extends Stub implements Echo {
             remote.registry.syncCall(rc);
             switch (buf.readI8() & 63) {
             case 0: return;
-            case 1: throw (com.alticast.test.TestException)(com.alticast.test.TestExceptionCodec.instance.read(buf));
+            case 1: throw (com.alticast.test.TestException)(codec3.read(buf));
             default: throw new RemoteException("Remote Call Failed.");
             }
         } finally {
@@ -52,8 +60,8 @@ public class EchoStub extends Stub implements Echo {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(0<<6, remote, 3);
-            com.alticast.rop.StringCodec.instance.write(msg, buf);
-            new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class).write(cb, buf);
+            codec0.write(msg, buf);
+            codec4.write(cb, buf);
             remote.registry.syncCall(rc);
             switch (buf.readI8() & 63) {
             case 0: return;
@@ -67,7 +75,7 @@ public class EchoStub extends Stub implements Echo {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(0<<6, remote, 4);
-            com.alticast.test.PersonCodec.instance.write(p, buf);
+            codec5.write(p, buf);
             remote.registry.syncCall(rc);
             switch (buf.readI8() & 63) {
             case 0: return;
@@ -81,8 +89,8 @@ public class EchoStub extends Stub implements Echo {
         RemoteCall rc = (RemoteCall)New.get(RemoteCall.class);
         try {
             Buffer buf = rc.init(1<<6, remote, 5);
-            com.alticast.rop.StringCodec.instance.write(msg, buf);
-            new com.alticast.rop.InterfaceCodec(com.alticast.test.EchoCallbackStub.class).write(cb, buf);
+            codec0.write(msg, buf);
+            codec4.write(cb, buf);
             remote.registry.asyncCall(rc, false);
         } finally {
             New.release(rc);
