@@ -14,16 +14,18 @@ public class LocalCall implements Reusable {
 
     public Buffer init (int h, int oid, Registry reg) {
         messageType = (h >> 6) & 3;
-        skeleton = reg.getSkeleton(oid);
-        if (skeleton == null) {
-            throw new RemoteException("No skeleton:"+oid);
+        synchronized (reg) {
+            skeleton = reg.getSkeleton(oid);
+            if (skeleton == null) {
+                throw new RemoteException("No skeleton:"+oid);
+            }
         }
         buffer.appData = reg;
         return buffer;
     }
 
-    public void reset () {
-        buffer.reset();
+    public void reuse () {
+        buffer.reuse();
         skeleton = null;
         value = null;
         codec = null;

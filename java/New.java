@@ -44,7 +44,7 @@ public class New {
         }
         if (l.size() < 4) {
             l.add(obj);
-            obj.reset();
+            obj.reuse();
         }
     }
 

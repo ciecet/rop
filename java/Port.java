@@ -17,7 +17,7 @@ public class Port implements Reusable, Runnable {
 
     public Thread processingThread; // non-null if being processed.
 
-    public void reset () {
+    public void reuse () {
         registry = null;
         remoteCalls = remoteCallsTail = null;
         localCalls = localCallsTail = null;

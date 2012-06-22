@@ -11,8 +11,8 @@ public class RemoteCall implements Reusable {
         return buffer;
     }
 
-    public void reset () {
-        buffer.reset();
+    public void reuse () {
+        buffer.reuse();
         isValid = false;
     }
 }

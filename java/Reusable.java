@@ -1,3 +1,3 @@
 interface Reusable {
-    public void reset ();
+    public void reuse ();
 }
