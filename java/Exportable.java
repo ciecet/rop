@@ -1,3 +1,0 @@
-interface Exportable {
-    Skeleton createSkeleton ();
-}

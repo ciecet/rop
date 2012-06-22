@@ -9,9 +9,25 @@ CPP_TYPES = {
     "i8" => "int8_t",
     "i16" => "int16_t",
     "i32" => "int32_t",
+    "i64" => "int64_t",
     "async" => "void",
     "void" => "void"
 }
+
+class ExceptionNode
+    def externalTypes
+        ts = []
+        fieldTypes.each { |t|
+            ts << t
+            next unless t.subTypes
+            t.subTypes.each { |t2|
+                ts << t2
+            }
+        }
+        ts.delete_if { |t| CPP_TYPES.has_key?(t.name) }
+        ts.uniq
+    end
+end
 
 class StructNode
     def externalTypes
@@ -96,6 +112,9 @@ def generate packages
                 f.puts "\#ifndef #{name.upcase}_H"
                 f.puts "\#define #{name.upcase}_H"
                 f.puts "\#include \"Remote.h\""
+                exp.externalTypes.each { |t|
+                    f.puts "\#include \"#{t.name}.h\""
+                }
                 f.puts
                 f.puts "namespace #{pkg.name} {"
                 f.puts "struct #{name}: rop::RemoteException {"

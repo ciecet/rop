@@ -4,12 +4,16 @@ require 'idlparser'
 
 lang = "cpp"
 inputFile = nil
+OPTIONS = {}
+OPTIONS["base-package"] = "com.alticast."
 
 while ARGV.length > 0
     arg = ARGV.shift
     case arg
     when '--lang', '-l'
         lang = ARGV.shift
+    when '--base-package', '-bp'
+        OPTIONS["base-package"] = ARGV.shift + "."
     else
         inputFile = arg
     end
