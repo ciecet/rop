@@ -46,13 +46,15 @@ public class StreamTransport extends Transport implements Runnable {
             DataInputStream is = new DataInputStream(inputStream);
             while (true) {
                 int len = is.readInt();
-                Port p = registry.getPort(-is.readInt());
-                Log.debug(">>> Port:"+p.id);
+                int pid = -is.readInt();
+                Port p = null;
+                Log.debug(">>> Port:"+pid);
                 int h = is.readByte() & 0xff;
 
                 if (((h>>6) & 3) == Port.MESSAGE_RETURN) {
                     RemoteCall rc = null;
                     synchronized (registry) {
+                        p = registry.getPort(pid);
                         rc = p.removeRemoteCall();
                     }
                     Buffer buf = rc.buffer;
@@ -69,6 +71,7 @@ public class StreamTransport extends Transport implements Runnable {
                     Buffer buf = lc.init(h, oid, registry);
                     buf.readFrom(is, len - 9);
                     synchronized (registry) {
+                        p = registry.getPort(pid);
                         p.addLocalCall(lc);
                         if (p.processingThread != null) {
                             synchronized (p) {

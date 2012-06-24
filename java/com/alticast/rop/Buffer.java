@@ -7,9 +7,9 @@ public class Buffer implements Reusable {
     private static final int RESERVED_SIZE = 8; // for adding prefix such as message length
     private static final int RESIZE_UNIT = 1024;
 
-    private byte[] buffer = new byte[RESIZE_UNIT];
-    private int begin = RESERVED_SIZE;
-    private int end = RESERVED_SIZE;
+    protected byte[] buffer = new byte[RESIZE_UNIT];
+    protected int begin = RESERVED_SIZE;
+    protected int end = RESERVED_SIZE;
 
     public Object appData;
 
