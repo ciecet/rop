@@ -641,12 +641,6 @@ var Registry = defineClass({
             }
             return skel
         }
-    },
-    setTransport: function(trans) {
-        this.transport = trans
-        if (trans) {
-            trans.registry = this
-        }
     }
 })
 
@@ -661,32 +655,37 @@ var runCont = function(cont) {
 
 var Transport = defineClass({
     init: function(host, onconnect) {
-        this.xhrUrl = "http://"+host+"/rop/xhr"
-        this.wsUrl = "ws://"+host+"/rop/ws"
-
-        this.registry = undefined
+        this.registry = new Registry()
+        this.registry.transport = this
         this.inBuffer = new Buffer()
         this.outBuffer = new Buffer()
         this.requestBuffer = new Buffer()
         this.inPort = undefined
         this.writeInPort = undefined
         this.readOutPort = undefined
+        this.sessionId = undefined // session id of server
+        this.xhrUrl = undefined
 
         // open websocket
-        var ws = new WebSocket(this.wsUrl)
+        var ws = new WebSocket("ws://"+host+"/rop")
         var self = this
         ws.onopen = function() {
             console.log("WebSocket open")
             self.webSocket = ws
-            onconnect()
         }
         ws.onclose = function() {
             console.log("WebSocket closed")
             self.WebSocket = undefined
         }
         ws.onmessage = function(e) {
-            //alert(e.data)
-            self.receive(e)
+            h = decode64(e.data)
+            self.sessionId = (h.charCodeAt(0) << 24) |
+                    (h.charCodeAt(1) << 16) | (h.charCodeAt(2) << 8) |
+                    h.charCodeAt(3)
+            self.xhrUrl = "http://"+host+"/rop/"+self.sessionId
+            console.log("session id:"+self.sessionId)
+            ws.onmessage = function (e) { self.receive(e) }
+            onconnect()
         }
     },
     send: function(p) {
@@ -758,7 +757,7 @@ var Transport = defineClass({
         buf.write(p.id & 0xff)
         w = function() { if (p.writer) return p.writer(buf) }
         while (w) {
-            console.log("wrigin...");
+            console.log("writing...");
             w = runCont(w)
             while (buf.size > 0) {
                 msg.push(buf.read())
@@ -766,9 +765,13 @@ var Transport = defineClass({
         }
         p.writer = undefined
 
+        console.error(msg)
         msg = encode64(String.fromCharCode.apply(String, msg))
 
         req = new XMLHttpRequest()
+        if (this.xhrUrl == undefined) {
+            throw "connect websocket first."
+        }
         req.open("POST", this.xhrUrl, false)
         req.setRequestHeader("Content-Type", "text/plain")
         req.send(msg)
@@ -780,7 +783,7 @@ var Transport = defineClass({
 
         msg = decode64(msg)
         var r = function() { return p.readMessage(buf, function() {}) }
-        var i = 0
+        var i = 4 // drop first 4 bytes (port id)
         while (r) {
             while (i < msg.length && buf.margin() > 0) {
                 buf.write(msg.charCodeAt(i++))
@@ -866,7 +869,7 @@ var Port = defineClass({
         return readAs(I8, buf, function(messageHead) {
             if ((messageHead & (3<<6)) === (3<<6)) {
                 var r = self.returns.pop()
-                if (!r) throws "No return waiting"
+                if (!r) throw "No return waiting"
                 return r.read(messageHead, buf, ret)
             } else {
                 return readAs(I32, buf, function(objectId) {

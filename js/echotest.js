@@ -1,6 +1,6 @@
-var reg = new Registry()
-reg.setTransport(new Transport("10.12.0.7:8080", function() {
-    var rr = reg.getRemote("Echo")
+var trans = new Transport("10.12.0.7:9999", function() {
+    var rr = trans.registry.getRemote("Echo")
+    console.log(rr)
     var e = createStub("test.Echo", rr)
     var ec = {
         name: "test.EchoCallback",
@@ -8,10 +8,19 @@ reg.setTransport(new Transport("10.12.0.7:8080", function() {
             alert("got "+msg)
         }
     }
-    //async(function(){
-        e.asyncEcho("Hello Sooin!", ec)
-    //})
-}))
+
+    alert(e.echo("한글테스트"))
+    alert(e.concat(["수인", "현옥"]))
+    try {
+        e.touchmenot()
+    } catch (ex) {
+        inspect(ex)
+    }
+
+    e.recursiveEcho("Hello there!", ec)
+    e.hello({name:"Sooin", callback:ec})
+    e.asyncEcho("Hello Sooin!", ec)
+})
 
 /*
 alert(e.echo("한글테스트"))
