@@ -1,0 +1,6 @@
+package rop {
+    interface RemoteMap {
+        List<String> findLocations (String rname, String proto);
+        async registerLocations (List<String> rnames, List<String> locs);
+    }
+}

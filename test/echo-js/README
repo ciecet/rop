@@ -1,0 +1,3 @@
+Required node modules:
+    https://github.com/einaros/ws
+    npm install ws

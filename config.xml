@@ -1,0 +1,64 @@
+<rule>
+    <code name="rop" alt="ROP Settings">
+	<desc>
+            Multi-language/platform RPC framework.
+	</desc>
+	<jinit name="0130 rop http server">
+            com.alticast.rop.HttpServer.init
+        </jinit>
+        <jconfig input="string" type="string" name="AL_CF_ROP_HTTP_SERVER_HOST" alt="HttpServer Host">
+            "localhost"
+        </jconfig>
+        <mset name="AL_NODECONF_ropHttpServerHost" otype="jconfig">
+            AL_CF_ROP_HTTP_SERVER_HOST
+        </mset>
+        <jconfig input="string" type="int" name="AL_CF_ROP_HTTP_SERVER_PORT" alt="HttpServer Port">
+            8090
+        </jconfig>
+        <mset name="AL_NODECONF_ropHttpServerPort" otype="jconfig">
+            AL_CF_ROP_HTTP_SERVER_PORT
+        </mset>
+        <mset name="AL_JSCONF_defaultRopHost" input="string" type="string" alt="jsconf.defaultRopHost">
+            "localhost:8090"
+        </mset>
+        <jconfig input="string" type="string" name="AL_CF_ROP_HTTP_SERVER_DOC_DIR" alt="HttpServer Document Dir">
+            "/js"
+        </jconfig>
+	<jinit name="0130 rop tcp server">
+            com.alticast.rop.SocketServer.init
+        </jinit>
+        <jconfig input="string" type="int" name="AL_CF_ROP_SOCKET_SERVER_PORT" alt="SocketServer Port">
+            1390
+        </jconfig>
+        <mset name="AL_NODECONF_ropSocketServerPort" otype="jconfig">
+            AL_CF_ROP_SOCKET_SERVER_PORT
+        </mset>
+        <debug name="ROP">DEFAULT</debug>
+        <module name="al_cf_rop_debug" alt="Turn On ROP debug messages" default="false">
+            <mset name="AL_CF_ROP_DEBUG"></mset>
+        </module>
+        <module name="al_cf_rop_use_eventfd" alt="Use eventfd instead of pipe" default="true">
+            <mset name="AL_CF_ROP_USE_EVENTFD"></mset>
+        </module>
+        <select name="al_cf_rop_thread_local_impl" alt="Choose thread local impl" default="pthread">
+            <option value="pthread" alt="pthread_getspecific()">
+                <mset name="AL_CF_ROP_THREAD_LOCAL_IMPL">0</mset>
+            </option>
+            <option value="gcc" alt="__thread">
+                <mset name="AL_CF_ROP_THREAD_LOCAL_IMPL">1</mset>
+            </option>
+        </select>
+
+        <module name="al_cf_rop_use_cpp_runtime" alt="Use C++ runtime" default="false">
+            <mset name="AL_CF_ROP_USE_CPP_RUNTIME"></mset>
+	    <module name="al_cf_rop_use_remotemap"
+                    alt="Use RemoteMap" default="false">
+		<mset name="AL_CF_ROP_USE_REMOTEMAP"/>
+	    </module>
+	    <module name="al_cf_rop_use_mangled_ed_mz"
+                    alt="Use mangled EventDriver for MagicWand" default="false">
+		<mset name="AL_CF_ROP_USE_MANGLED_ED_MZ"/>
+	    </module>
+        </module>
+    </code>
+</rule>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Console Page</title>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script type="text/javascript" src="acba.js"></script>
+    <script type="text/javascript" src="config.js"></script>
+    <script type="text/javascript" src="defaultRopTransport.js"></script>
+    <script type="text/javascript" src="rop.js"></script>
+    <script type="text/javascript" src="rop_base.js"></script>
+    <script type="text/javascript" src="rop_buffer.js"></script>
+    <script type="text/javascript" src="roptypes.js"></script>
+    <script type="text/javascript" src="test.js"></script>
+    <script type="text/javascript" src="util.js"></script>
+    <script type="text/javascript" src="webapp.js"></script>
+    <script type="text/javascript" src="webpeer.js"></script>
+</head>
+<body>
+    <script>
+        var trans
+        var test
+
+        var cb = {
+            type: 'test.Callback',
+            run: function (msg, ret) {
+                console.log('callback message:'+msg)
+                console.log('nested call:'+test.echo(msg))
+            }
+        }
+
+        window.onload = function () {
+            acba("js:config").defaultRopHost = location.host
+            acba.require("js:webapp", function () {
+                acba.require(['js:rop', 'js:aa'], function (rop) {
+                    trans = new rop.Transport('localhost:8091',
+                        function () {
+                            console.log('open')
+                            var reg = trans.registry
+                            test = rop.createStub('test.Test', reg.getRemote('Test'))
+                            test.setCallback(cb)
+                        },
+                        function () {
+                            console.log('closed')
+                        },
+                        function () {
+                            console.log('error')
+                        }
+                    )
+                })
+            })
+        }
+    </script>
+</body>
+</html>

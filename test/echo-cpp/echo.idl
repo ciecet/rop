@@ -1,0 +1,28 @@
+package test {
+
+    struct Person {
+        String name;
+        EchoCallback callback;
+    }
+
+    exception TestException {
+        i32 i;
+    }
+
+    interface EchoCallback {
+        async call (String msg);
+        void call2 (String msg, i32 ttl, EchoCallback cb);
+    }
+
+    interface Echo {
+        String echo (Nullable<String> msg);
+        String concat (List<String> msgs);
+        void touchmenot () throws TestException;
+        void recursiveEcho (String msg, EchoCallback cb);
+        void hello (Person p);
+        async asyncEcho (String msg, EchoCallback cb);
+        i32 doubleit (i32 i);
+        Variant echoVariant (Variant obj);
+        void echo2 (String msg, i32 ttl, EchoCallback cb);
+    }
+}

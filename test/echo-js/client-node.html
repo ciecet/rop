@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head>
+<body>
+    <script src='acba.js'></script>
+    <script src='log.js'></script>
+    <script src='acba/log.js'></script>
+    <script src='../../js/rop.js'></script>
+    <script src='../../js/rop_base.js'></script>
+    <script src='../../js/rop_buffer.js'></script>
+    <script src='roptypes.js'></script>
+    <script>
+        var callback = {
+            type: 'test.Callback',
+            // @rop void run (String msg);
+            run: function (msg, ret) {
+                console.log('Got callback msg:'+msg)
+                test.echo(msg, ret)
+            },
+        }
+
+        var test
+        acba.require(['js:rop', 'js:roptypes'], function (rop) {
+
+            var trans = new rop.HttpTransport({
+                host: 'localhost:8090',
+                mode: 'node'
+            })
+
+            trans.onopen = function () {
+                trans.registry.getRemote('test.Test', function (ri, rv) {
+                    test = rop.createStub('test.Test', rv)
+                    test.setCallback(callback)
+                })
+            }
+        })
+    </script>
+</body>
+</html>

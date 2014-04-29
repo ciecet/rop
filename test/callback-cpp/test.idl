@@ -1,0 +1,11 @@
+package test {
+
+    interface Callback {
+        void run (String msg);
+    }
+
+    interface Test {
+        async setCallback(Callback cb);
+        String echo (String msg);
+    }
+}

@@ -1,0 +1,6 @@
+package test {
+
+    interface Test {
+        void sleep (i32 sec);
+    }
+}
